@@ -1,0 +1,12 @@
+name        "fluentd"
+description "A localization system designed to unleash the expressive power of the natural language."
+homepage    "https://github.com/SirNickolas/fluentd"
+authors     "Nickolay Bukreyev"
+copyright   "Copyright © 2019, Nickolay Bukreyev"
+license     "MIT"
+
+toolchainRequirements frontend=">=2.078"
+
+dependency "sumtype" version="~>0.8.9"
+
+targetType "library"
