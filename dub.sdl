@@ -7,6 +7,8 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
+subPackage "./test/"
+
 dependency "sumtype" version="~>0.8.9"
 
 targetType "library"
