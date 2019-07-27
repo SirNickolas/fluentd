@@ -1,0 +1,220 @@
+module fluentd.ast;
+
+import std.range.primitives: empty;
+
+import sumtype;
+
+struct ByteOffset {
+    private size_t _value;
+
+    alias _value this;
+}
+
+struct Span {
+    ByteOffset start, end;
+
+    invariant {
+        assert(start <= end, "Reverse spans are not supported");
+    }
+}
+
+/+
+    Expressions:
++/
+struct TextElement {
+    string content;
+
+    invariant {
+        assert(!content.empty, "Empty text");
+    }
+}
+
+struct Identifier {
+    string name;
+
+    invariant {
+        assert(!name.empty, "Empty identifier");
+    }
+}
+
+struct OptionalIdentifier {
+    string name;
+}
+
+struct StringLiteral {
+    string value;
+}
+
+struct NumberLiteral {
+    string value;
+
+    invariant {
+        assert(!value.empty, "Empty number literal");
+    }
+}
+
+alias Literal = SumType!(StringLiteral, NumberLiteral);
+
+struct NamedArgument {
+    Identifier name;
+    Literal value;
+}
+
+struct CallArguments {
+    InlineExpression[ ] positional;
+    NamedArgument[ ] named;
+}
+
+struct FunctionReference {
+    Identifier id;
+    CallArguments arguments;
+}
+
+struct MessageReference {
+    Identifier id;
+    OptionalIdentifier attribute;
+}
+
+struct TermReference {
+    Identifier id;
+    OptionalIdentifier attribute;
+    CallArguments arguments;
+}
+
+struct VariableReference {
+    Identifier id;
+}
+
+struct InlineExpression {
+    private SumType!(
+        StringLiteral,
+        NumberLiteral,
+        FunctionReference,
+        MessageReference,
+        TermReference,
+        VariableReference,
+        Expression*,
+    ) _value;
+
+    alias _value this;
+
+    invariant {
+        _value.match!(
+            (const(Expression)* e) {
+                assert(e !is null, "Null `Expression` as part of `InlineExpression`");
+            },
+            (_) { },
+        );
+    }
+}
+
+alias VariantKey = SumType!(Identifier, NumberLiteral);
+
+alias PatternElement = SumType!(TextElement, Expression);
+
+struct Pattern {
+    PatternElement[ ] elements;
+}
+
+struct Variant {
+    VariantKey key;
+    Pattern value;
+    bool default_;
+
+    invariant {
+        assert(!value.elements.empty, "Empty variant");
+    }
+}
+
+struct SelectExpression {
+    InlineExpression selector;
+    Variant[ ] variants;
+
+    invariant {
+        assert(!variants.empty, "Empty selection");
+    }
+}
+
+/+
+    DMD's support for recursive templates is quite restricted.
+    For example, these declarations are sane, but, unfortunately, do not compile:
+
+    struct A { }
+    struct B { }
+    alias C = SumType!(A, D*);
+    alias D = SumType!(B, C);
+
+    We have to manually break the template chain by defining a struct.
++/
+struct Expression {
+    private SumType!(InlineExpression, SelectExpression) _value;
+
+    alias _value this;
+}
+/+
+    End of expressions.
++/
+
+struct NoComment { }
+
+struct Comment {
+    string content;
+}
+
+struct GroupComment {
+    string content;
+}
+
+struct ResourceComment {
+    string content;
+}
+
+alias OptionalComment = SumType!(NoComment, Comment);
+alias AnyComment = SumType!(Comment, GroupComment, ResourceComment);
+
+struct Attribute {
+    Identifier id;
+    Pattern value;
+
+    invariant {
+        assert(!value.elements.empty, "Empty attribute");
+    }
+}
+
+struct Message {
+    Identifier id;
+    Pattern value;
+    Attribute[ ] attributes;
+    OptionalComment comment;
+
+    invariant {
+        assert(!value.elements.empty || !attributes.empty, "Empty message");
+    }
+}
+
+struct Term {
+    Identifier id;
+    Pattern value;
+    Attribute[ ] attributes;
+    OptionalComment comment;
+
+    invariant {
+        assert(!value.elements.empty, "Empty term");
+    }
+}
+
+alias Entry = SumType!(Message, Term, AnyComment);
+
+struct Junk {
+    string content;
+
+    invariant {
+        assert(!content.empty, "Empty junk");
+    }
+}
+
+alias ResourceEntry = SumType!(Entry, Junk);
+
+struct Resource {
+    ResourceEntry[ ] body;
+}
