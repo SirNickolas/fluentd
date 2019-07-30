@@ -1,6 +1,6 @@
-module fluentd.parser.errors;
+module fluentd.syntax.parser.errors;
 
-import fluentd.parser.span;
+import fluentd.syntax.parser.span;
 
 private template _declareSumType(string name, Spec...) {
     import std.array: join;

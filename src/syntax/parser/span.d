@@ -1,4 +1,4 @@
-module fluentd.parser.span;
+module fluentd.syntax.parser.span;
 
 struct ByteOffset {
     size_t value;

@@ -1,4 +1,4 @@
-module fluentd.ast;
+module fluentd.syntax.ast;
 
 import std.meta: staticIndexOf;
 import std.range.primitives: empty;

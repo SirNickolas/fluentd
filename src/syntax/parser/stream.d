@@ -1,10 +1,10 @@
-module fluentd.parser.stream;
+module fluentd.syntax.parser.stream;
 
 import std.algorithm.comparison: among;
 import std.functional: unaryFun;
 import std.traits: ifTestable;
 
-import fluentd.parser.span;
+import fluentd.syntax.parser.span;
 
 private nothrow pure @safe @nogc:
 

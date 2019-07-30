@@ -1,12 +1,12 @@
-module fluentd.parser;
+module fluentd.syntax.parser;
 
 import std.array: Appender, appender;
 import std.range.primitives: empty;
 
-import fluentd.parser.span;
-import fluentd.parser.stream;
-import ast = fluentd.ast;
-import err = fluentd.parser.errors: ErrorKind, ParserError;
+import fluentd.syntax.parser.span;
+import fluentd.syntax.parser.stream;
+import ast = fluentd.syntax.ast;
+import err = fluentd.syntax.parser.errors: ErrorKind, ParserError;
 
 private pure @safe:
 
