@@ -1,22 +1,9 @@
 module fluentd.ast;
 
+import std.meta: staticIndexOf;
 import std.range.primitives: empty;
 
 import sumtype;
-
-struct ByteOffset {
-    private size_t _value;
-
-    alias _value this;
-}
-
-struct Span {
-    ByteOffset start, end;
-
-    invariant {
-        assert(start <= end, "Reverse spans are not supported");
-    }
-}
 
 /+
     Expressions:
@@ -86,7 +73,7 @@ struct VariableReference {
 }
 
 struct InlineExpression {
-    private SumType!(
+    SumType!(
         StringLiteral,
         NumberLiteral,
         FunctionReference,
@@ -94,17 +81,21 @@ struct InlineExpression {
         TermReference,
         VariableReference,
         Expression*,
-    ) _value;
+    ) value;
 
-    alias _value this;
+    alias value this;
 
     invariant {
-        _value.match!(
+        value.match!(
             (const(Expression)* e) {
                 assert(e !is null, "Null `Expression` as part of `InlineExpression`");
             },
             (_) { },
         );
+    }
+
+    this(T)(T x) nothrow pure @nogc if (staticIndexOf!(T, typeof(value).Types) >= 0) {
+        value = x;
     }
 }
 
@@ -147,9 +138,13 @@ struct SelectExpression {
     We have to manually break the template chain by defining a struct.
 +/
 struct Expression {
-    private SumType!(InlineExpression, SelectExpression) _value;
+nothrow pure @nogc:
+    SumType!(InlineExpression, SelectExpression) value;
 
-    alias _value this;
+    alias value this;
+
+    this(InlineExpression e) { value = e; }
+    this(SelectExpression e) { value = e; }
 }
 /+
     End of expressions.
@@ -213,7 +208,7 @@ struct Junk {
     }
 }
 
-alias ResourceEntry = SumType!(Entry, Junk);
+alias ResourceEntry = SumType!(Junk, Entry);
 
 struct Resource {
     ResourceEntry[ ] body;
