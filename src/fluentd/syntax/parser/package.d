@@ -18,9 +18,9 @@ public struct ParserResult {
 class _ParserException: Exception {
     ParserError err;
 
-    this(ParserError err) nothrow pure @nogc {
+    this(ParserError e) nothrow pure @nogc {
         super(null);
-        this.err = err;
+        err = e;
     }
 }
 
@@ -38,6 +38,10 @@ enum _PatternState: ubyte {
     haveNoText,
     haveText,
     mergingTexts,
+}
+
+T _unreachable(T = void)(const(char)[ ] msg) nothrow @nogc {
+    assert(false, msg);
 }
 
 Span _byteAt(ByteOffset pos) nothrow @nogc {
@@ -136,9 +140,6 @@ pure:
 
     ast.Pattern parsePattern() {
         import std.algorithm.comparison: among, min;
-        import std.algorithm.mutation: remove;
-        import std.algorithm.searching: find;
-        import std.range: retro;
         import sumtype;
 
         if (ps.skip('}'))
@@ -152,7 +153,10 @@ pure:
         linePtrs ~= patternElements.data.length;
 
         // Parse the rest of the pattern.
-        size_t nonBlankLines = !!patternElements.data.length;
+        size_t nonBlankLines = patternElements.data.length > 1 || patternElements.data[0].match!(
+            (ref ast.TextElement te) => !te.content.empty,
+            (ref _) => _unreachable!bool("The first line of a pattern does not start with text"),
+        );
         size_t firstNonBlankLine = nonBlankLines - 1;
         size_t commonIndentation = size_t.max;
         while (true) {
@@ -253,8 +257,9 @@ pure:
                         result[w++] = pe;
                     },
                 );
+                r++;
             }
-            r = nextR;
+            assert(r == nextR, "Wrong number of iterations of the line parsing loop");
         }
 
         // Append trailing text, stripping spaces from it.
