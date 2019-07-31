@@ -399,28 +399,27 @@ public ParserResult parse(string source) nothrow {
 
     auto p = _createParser(source);
     ast.OptionalComment lastComment;
-    ast.ResourceEntry rEntry;
+    ast.ResourceEntry rcEntry;
     while (true) {
-        p.ps.skipBlankBlock();
+        const haveVSpace = p.ps.skipBlankBlock();
         if (p.ps.eof)
             break;
         {
             const entryStart = p.ps.pos;
             try
-                rEntry = p.parseEntry();
+                rcEntry = p.parseEntry();
             catch (_ParserException e) {
                 errors ~= e.err;
                 p.ps.skipJunk();
-                rEntry = ast.Junk(p.ps.slice(entryStart));
+                rcEntry = ast.Junk(p.ps.slice(entryStart));
             } catch (Exception e)
                 assert(false, e.msg);
         }
 
         // Attach preceding comment to a message or term.
-        // TODO: Do not attach if there are blank lines between them.
         lastComment.match!(
             (ref ast.Comment c) {
-                if (rEntry.match!(
+                if (haveVSpace || rcEntry.match!(
                     (ref ast.Entry entry) => entry.match!(
                         (ref msgOrTerm) {
                             msgOrTerm.comment = lastComment;
@@ -436,8 +435,8 @@ public ParserResult parse(string source) nothrow {
             (ast.NoComment _) { },
         );
 
-        // Append `rEntry` to `entries` unless it is a `Comment`.
-        if (rEntry.match!(
+        // Append `rcEntry` to `entries` unless it is a `Comment`.
+        if (rcEntry.match!(
             (ref ast.Entry entry) => entry.match!(
                 (ref ast.AnyComment ac) => ac.match!(
                     (ref ast.Comment c) {
@@ -450,7 +449,7 @@ public ParserResult parse(string source) nothrow {
             ),
             _ => true,
         ))
-            entries ~= rEntry;
+            entries ~= rcEntry;
     }
 
     return ParserResult(ast.Resource(entries.data), errors.data);

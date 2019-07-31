@@ -83,7 +83,7 @@ struct InlineExpression {
         Expression*,
     ) value;
 
-    alias value this;
+    // alias value this;
 
     invariant {
         value.match!(
@@ -141,7 +141,7 @@ struct Expression {
 nothrow pure @nogc:
     SumType!(InlineExpression, SelectExpression) value;
 
-    alias value this;
+    // alias value this;
 
     this(InlineExpression e) { value = e; }
     this(SelectExpression e) { value = e; }
