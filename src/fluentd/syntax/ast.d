@@ -5,6 +5,8 @@ import std.range.primitives: empty;
 
 import sumtype;
 
+@safe:
+
 /+
     Expressions:
 +/
@@ -83,7 +85,7 @@ struct InlineExpression {
         Expression*,
     ) value;
 
-    // alias value this;
+    alias value this;
 
     invariant {
         value.match!(
@@ -138,13 +140,13 @@ struct SelectExpression {
     We have to manually break the template chain by defining a struct.
 +/
 struct Expression {
-nothrow pure @nogc:
     SumType!(InlineExpression, SelectExpression) value;
 
-    // alias value this;
+    alias value this;
 
-    this(InlineExpression e) { value = e; }
-    this(SelectExpression e) { value = e; }
+    this(T)(T x) nothrow pure @nogc if (staticIndexOf!(T, typeof(value).Types) >= 0) {
+        value = x;
+    }
 }
 /+
     End of expressions.
