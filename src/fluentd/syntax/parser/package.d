@@ -3,6 +3,7 @@ module fluentd.syntax.parser;
 import std.array: Appender, appender;
 import std.range.primitives: empty;
 
+import fluentd.syntax.parser.common;
 import fluentd.syntax.parser.span;
 import fluentd.syntax.parser.stream;
 import ast = fluentd.syntax.ast;
@@ -55,6 +56,13 @@ S _stripTrailingSpaces(S: const(char)[ ])(S text) nothrow @nogc {
     return text.byCodeUnit().stripRight(' ').source;
 }
 
+bool _isValidCallee(ast.Identifier id) nothrow @nogc {
+    import std.algorithm.searching;
+    import std.utf;
+
+    return id.name.byCodeUnit().all!(c => _isCallee(c));
+}
+
 struct _Parser {
 pure:
     ParserStream ps;
@@ -62,30 +70,210 @@ pure:
     Appender!(ast.PatternElement[ ]) patternElements;
     Appender!(size_t[ ]) linePtrs; // Indices into `patternElements`.
     Appender!(ast.Attribute[ ]) attrs;
+    Appender!(ast.InlineExpression[ ]) args;
+    Appender!(ast.NamedArgument[ ]) kwargs;
+    bool[string] seenKwargs;
 
     @property Span curSpan() const nothrow @nogc {
         return _byteAt(ps.pos);
     }
 
-    void throw_(ErrorKind kind, Span span) const {
-        throw new _ParserException(ParserError(span, kind));
+    void throw_(K)(K kind, Span span) const {
+        throw new _ParserException(ParserError(span, ErrorKind(kind)));
     }
 
-    void throw_(ErrorKind kind) const {
+    void throw_(K)(K kind) const {
         throw_(kind, curSpan);
     }
 
     void expect(char c)() {
         if (!ps.skip(c)) {
             enum range = c == '\\' ? `\\` : c ~ "";
-            throw_(ErrorKind(err.ExpectedCharRange(range)));
+            throw_(err.ExpectedCharRange(range));
         }
     }
 
-    ast.Expression parsePlaceable() {
-        debug if (ps.skip('}')) // Allow `{}` in debug.
-            return ast.Expression(ast.InlineExpression(ast.StringLiteral.init));
+    ast.StringLiteral parseStringLiteral() {
+        const s = ps.skipStringLiteral();
+        if (s is null) // TODO: Differentiate errors.
+            throw_(err.UnterminatedStringExpression());
+        return ast.StringLiteral(s);
+    }
+
+    ast.NumberLiteral parseNumberLiteral() {
+        const start = ps.pos;
+        if (!ps.skipNumberLiteral())
+            throw_(err.ExpectedCharRange("0-9"));
+        return ast.NumberLiteral(ps.slice(start));
+    }
+
+    ast.Literal parseLiteral() {
+        switch (ps.classifyInlineExpression()) with (InlineExpressionStart) {
+        case stringLiteral:
+            return ast.Literal(parseStringLiteral());
+        case numberLiteral:
+            return ast.Literal(parseNumberLiteral());
+        default:
+            throw_(err.ExpectedLiteral());
+            assert(false);
+        }
+    }
+
+    T parseIdentifier(T = ast.Identifier)() {
+        const s = ps.skipIdentifier();
+        if (s.empty)
+            throw_(err.ExpectedCharRange("A-Za-z"));
+        return T(s);
+    }
+
+    ast.VariableReference parseVariableReference()
+    in {
+        assert(ps.test('$'));
+    }
+    do {
+        ps.skip();
+        return ast.VariableReference(parseIdentifier());
+    }
+
+    ast.OptionalIdentifier parseAttributeAccessor() {
+        if (!ps.skip('.'))
+            return ast.OptionalIdentifier.init;
+        return parseIdentifier!(ast.OptionalIdentifier);
+    }
+
+    ast.CallArguments parseArgumentList() {
+        import sumtype;
+
+        args.clear();
+        kwargs.clear();
+        // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
+        () @trusted { seenKwargs.clear(); }();
+
+        do {
+            ps.skipBlank();
+            if (ps.skip(')'))
+                return ast.CallArguments(args.data.dup, kwargs.data.dup);
+
+            auto arg = parseInlineExpression();
+            ps.skipBlank();
+            if (ps.skip(':')) {
+                // Named argument.
+                ast.Identifier argName;
+                // Argument's name is parsed as a message reference (without an attribute).
+                if (arg.match!(
+                    (ref ast.MessageReference mr) {
+                        if (!mr.attribute.name.empty)
+                            return true;
+                        argName = mr.id;
+                        return false;
+                    },
+                    (ref _) => true,
+                ))
+                    throw_(err.InvalidArgumentName());
+
+                ps.skipBlank();
+                const argValue = parseLiteral();
+                // Check for duplicates.
+                if (argName.name in seenKwargs)
+                    throw_(err.DuplicatedNamedArgument(argName.name));
+                seenKwargs[argName.name] = true;
+
+                kwargs ~= ast.NamedArgument(argName, argValue);
+                ps.skipBlank();
+            } else {
+                // Positional argument.
+                if (!kwargs.data.empty)
+                    throw_(err.PositionalArgumentFollowsNamed());
+                args ~= arg;
+            }
+        } while (ps.skip(','));
+
+        if (ps.skip(')'))
+            return ast.CallArguments(args.data.dup, kwargs.data.dup);
+        throw_(err.ExpectedCharRange(",)"));
+        assert(false);
+    }
+
+    ast.OptionalCallArguments parseCallArguments() {
+        ps.skipBlank();
+        if (!ps.skip('('))
+            return ast.OptionalCallArguments(ast.NoCallArguments());
+        return ast.OptionalCallArguments(parseArgumentList());
+    }
+
+    ast.TermReference parseTermReference()
+    in {
+        assert(ps.test('-'));
+    }
+    do {
+        ps.skip();
+        return ast.TermReference(parseIdentifier(), parseAttributeAccessor(), parseCallArguments());
+    }
+
+    ast.InlineExpression parseMessageOrFunctionReference() {
+        import sumtype;
+
+        const id = ast.Identifier(ps.skipIdentifier());
+        const attr = parseAttributeAccessor();
+        if (!attr.name.empty)
+            return ast.InlineExpression(ast.MessageReference(id, attr));
+        return parseCallArguments().match!(
+            (ast.NoCallArguments _) =>
+                ast.InlineExpression(ast.MessageReference(id)),
+            (ref ast.CallArguments ca) {
+                if (!_isValidCallee(id))
+                    throw_(err.ForbiddenCallee());
+                return ast.InlineExpression(ast.FunctionReference(id, ca));
+            },
+        );
+    }
+
+    ast.InlineExpression parseInlineExpression() {
+        final switch (ps.classifyInlineExpression()) with (InlineExpressionStart) {
+        case stringLiteral:
+            return ast.InlineExpression(parseStringLiteral());
+
+        case numberLiteral:
+            return ast.InlineExpression(parseNumberLiteral());
+
+        case variableReference:
+            return ast.InlineExpression(parseVariableReference());
+
+        case termReference:
+            return ast.InlineExpression(parseTermReference());
+
+        case identifier:
+            return parseMessageOrFunctionReference();
+
+        case placeable:
+            assert(ps.test('{'));
+            ps.skip();
+            return ast.InlineExpression(new ast.Expression(parsePlaceable()));
+
+        case invalid:
+            throw_(err.ExpectedInlineExpression());
+            assert(false);
+        }
+    }
+
+    ast.Variant[ ] parseVariantList() {
         assert(false, "Not implemented");
+    }
+
+    ast.Expression parsePlaceable()
+    in {
+        ps.assertLast!q{a == '{'};
+    }
+    do {
+        ps.skipBlank();
+        auto ie = parseInlineExpression();
+        ps.skipBlank();
+        scope(success) expect!'}'();
+        if (!ps.skipArrow())
+            return ast.Expression(ie);
+        auto variants = parseVariantList();
+        ps.skipBlank();
+        return ast.Expression(ast.SelectExpression(ie, variants));
     }
 
     void appendInlineText(ByteOffset start, ByteOffset end) nothrow {
@@ -108,19 +296,23 @@ pure:
                 patternElements ~= ast.PatternElement(parsePlaceable());
                 inlineTextStart = ps.pos;
                 continue;
+
             case lf:
                 version (Windows)
                     newlineLength = 1;
                 break loop;
+
             case crlf:
                 version (Posix)
                     newlineLength = 2;
                 break loop;
+
             case eof:
                 newlineLength = 0;
                 break loop;
-            case unpairedBrace:
-                throw_(ErrorKind(err.UnpairedClosingBrace()), _byteAt(ByteOffset(ps.pos - 1)));
+
+            case unbalancedBrace:
+                throw_(err.UnbalancedClosingBrace(), _byteAt(ByteOffset(ps.pos - 1)));
                 assert(false);
             }
 
@@ -143,7 +335,7 @@ pure:
         import sumtype;
 
         if (ps.skip('}'))
-            throw_(ErrorKind(err.UnpairedClosingBrace()), _byteAt(ByteOffset(ps.pos - 1)));
+            throw_(err.UnbalancedClosingBrace(), _byteAt(ByteOffset(ps.pos - 1)));
 
         patternElements.clear();
         linePtrs.clear();
@@ -257,9 +449,13 @@ pure:
                         result[w++] = pe;
                     },
                 );
-                r++;
+                version (assert)
+                    r++;
             }
-            assert(r == nextR, "Wrong number of iterations of the line parsing loop");
+            version (assert)
+                assert(r == nextR, "Wrong number of iterations of the line parsing loop");
+            else
+                r = nextR;
         }
 
         // Append trailing text, stripping spaces from it.
@@ -271,13 +467,11 @@ pure:
     }
 
     _NamedPattern parseNamedPattern() {
-        const id = ps.skipIdentifier();
-        if (id.empty)
-            throw_(ErrorKind(err.ExpectedCharRange("A-Za-z")));
+        const id = parseIdentifier();
         ps.skipBlankInline();
         expect!'='();
         ps.skipBlankInline();
-        return _NamedPattern(ast.Identifier(id), parsePattern());
+        return _NamedPattern(id, parsePattern());
     }
 
     ast.Attribute[ ] parseAttributes() {
@@ -290,7 +484,7 @@ pure:
                 break;
             auto p = parseNamedPattern();
             if (p.value.elements.empty) // TODO: Report this error on the previous line.
-                throw_(ErrorKind(err.MissingValue()));
+                throw_(err.MissingValue());
             attrs ~= ast.Attribute(p.id, p.value);
         }
         ps.backtrack(lineStart);
@@ -305,7 +499,7 @@ pure:
         const entryStart = ps.pos;
         auto m = parseMessageLike();
         if (!validate(m))
-            throw_(ErrorKind(E(m.pattern.id.name)), Span(entryStart, ps.pos));
+            throw_(E(m.pattern.id.name), Span(entryStart, ps.pos));
         return T(m.pattern.id, m.pattern.value, m.attributes);
     }
 
@@ -337,7 +531,7 @@ pure:
         if (ps.skip(' '))
             lastLine = ps.skipLine();
         else if (!ps.skipLineEnd())
-            throw_(ErrorKind(err.ExpectedCharRange(" ")));
+            throw_(err.ExpectedCharRange(" "));
 
         buffer.clear();
         {
@@ -388,6 +582,8 @@ _Parser _createParser(string source) nothrow {
         appender(minimallyInitializedArray!(ast.PatternElement[ ])(15)),
         appender(uninitializedArray!(size_t[ ])(7)),
         appender(minimallyInitializedArray!(ast.Attribute[ ])(7)),
+        appender(minimallyInitializedArray!(ast.InlineExpression[ ])(7)),
+        appender(minimallyInitializedArray!(ast.NamedArgument[ ])(15)),
     );
 }
 

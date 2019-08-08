@@ -4,32 +4,27 @@ import std.algorithm.comparison: among;
 import std.functional: unaryFun;
 import std.traits: ifTestable;
 
+import fluentd.syntax.parser.common;
 import fluentd.syntax.parser.span;
 
 private nothrow pure @safe @nogc:
-
-bool _isAlpha(char c) {
-    return uint((c | 0x20) - 'a') < 26u;
-}
-
-bool _isDigit(char c) {
-    return uint(c - '0') < 10u;
-}
-
-bool _isIdent(char c) {
-    return _isAlpha(c) || _isDigit(c) || c.among!('-', '_');
-}
-
-bool _isEntryStart(char c) {
-    return _isAlpha(c) || c.among!('-', '#');
-}
 
 public enum TextElementTermination: ubyte {
     placeableStart,
     lf,
     crlf,
     eof,
-    unpairedBrace,
+    unbalancedBrace,
+}
+
+public enum InlineExpressionStart: ubyte {
+    stringLiteral,
+    numberLiteral,
+    variableReference,
+    termReference,
+    identifier,
+    placeable,
+    invalid,
 }
 
 public struct ParserStream {
@@ -95,6 +90,10 @@ nothrow pure @nogc:
         return i < s.length && unaryFun!pred(s[i]);
     }
 
+    void skip() {
+        _pos++;
+    }
+
     bool skip(char c) {
         mixin _fastAccess;
         if (i == s.length || s[i] != c)
@@ -111,15 +110,23 @@ nothrow pure @nogc:
         return true;
     }
 
+    bool skipArrow() {
+        mixin _fastAccess;
+        if (i + 1 >= s.length || s[i] != '-' || s[i + 1] != '>')
+            return false;
+        _pos = i + 2;
+        return true;
+    }
+
     bool skipLineEnd() {
         mixin _fastAccess;
         if (i == s.length)
             return true;
-        const cur = s[i];
-        if (cur == '\n') {
+        const c = s[i];
+        if (c == '\n') {
             _pos = i + 1;
             return true;
-        } else if (cur == '\r' && i + 1 < s.length && s[i + 1] == '\n') {
+        } else if (c == '\r' && i + 1 < s.length && s[i + 1] == '\n') {
             _pos = i + 2;
             return true;
         }
@@ -144,8 +151,9 @@ nothrow pure @nogc:
             while (true) {
                 if (i == s.length)
                     return true;
-                if (s[i] != ' ') {
-                    if ((s[i] != '\r' || ++i < s.length) && s[i] == '\n')
+                const c = s[i];
+                if (c != ' ') {
+                    if ((c != '\r' || ++i < s.length) && s[i] == '\n')
                         break;
                     i = lineStart;
                     return found;
@@ -161,8 +169,9 @@ nothrow pure @nogc:
         mixin _fastAccess;
         scope(success) _pos = i;
         while (i < s.length) {
-            if (!s[i].among!(' ', '\n')) {
-                if (s[i] == '\r' && i + 1 < s.length && s[i + 1] == '\n') {
+            const c = s[i];
+            if (!c.among!(' ', '\n')) {
+                if (c == '\r' && i + 1 < s.length && s[i + 1] == '\n') {
                     i += 2;
                     continue;
                 }
@@ -236,8 +245,106 @@ nothrow pure @nogc:
                 else if (c == '{')
                     return placeableStart;
                 else if (c == '}')
-                    return unpairedBrace;
+                    return unbalancedBrace;
         }
         return TextElementTermination.eof;
+    }
+
+    InlineExpressionStart classifyInlineExpression() const {
+        mixin _fastAccess;
+        with (InlineExpressionStart) {
+            if (i == s.length)
+                return invalid;
+            char c = s[i];
+            if (c == '$')
+                return variableReference;
+            if (c == '"')
+                return stringLiteral;
+            if (_isAlpha(c))
+                return identifier;
+            if (_isDigit(c))
+                return numberLiteral;
+            if (c == '-') {
+                if (i + 1 < s.length) {
+                    c = s[i + 1];
+                    if (_isAlpha(c))
+                        return termReference;
+                    if (_isDigit(c))
+                        return numberLiteral;
+                }
+            } else if (c == '{')
+                return placeable;
+            return invalid;
+        }
+    }
+
+    // Returns `null` on failure.
+    // TODO: Differentiate errors.
+    string skipStringLiteral()
+    in {
+        assert(classifyInlineExpression() == InlineExpressionStart.stringLiteral);
+    }
+    do {
+        mixin _fastAccess;
+        assert(s[i] == '"');
+        scope(success) _pos = i;
+        const start = i + 1;
+        while (++i < s.length) {
+            char c = s[i];
+            if (c == '"')
+                return s[start .. i++];
+            else if (c == '\\') {
+                if (++i == s.length)
+                    return null; // Unknown escape sequence (EOF).
+                c = s[i];
+                if (c.among!('"', '\\'))
+                    continue;
+
+                ubyte n = void;
+                if (c == 'u')
+                    n = 4;
+                else if (c == 'U')
+                    n = 6;
+                else
+                    return null; // Unknown escape sequence.
+                if (i + n >= s.length)
+                    return null; // Invalid unicode escape sequence (EOF).
+                do
+                    if (!_isHexDigit(s[++i]))
+                        return null; // Invalid unicode escape sequence.
+                while (--n);
+            } else if (c == '\n') // Don't need to handle `\r\n` specially.
+                return null; // Unterminated string expression.
+        }
+        return null; // Unterminated string expression (EOF).
+    }
+
+    bool skipNumberLiteral()
+    in {
+        assert(classifyInlineExpression() == InlineExpressionStart.numberLiteral);
+    }
+    do {
+        mixin _fastAccess;
+        scope(success) _pos = i;
+        // Minus sign.
+        if (s[i] == '-')
+            i++;
+        // Integer part.
+        assert(_isDigit(s[i]));
+        while (true) {
+            if (++i == s.length)
+                return true;
+            const c = s[i];
+            if (!_isDigit(c)) {
+                if (c != '.')
+                    return true;
+                break;
+            }
+        }
+        // Fractional part.
+        if (++i == s.length || !_isDigit(s[i]))
+            return false; // A number cannot end with a dot in Fluent.
+        while (++i < s.length && _isDigit(s[i])) { }
+        return true;
     }
 }

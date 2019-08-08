@@ -44,6 +44,8 @@ struct NumberLiteral {
 
 alias Literal = SumType!(StringLiteral, NumberLiteral);
 
+struct NoCallArguments { }
+
 struct NamedArgument {
     Identifier name;
     Literal value;
@@ -53,6 +55,8 @@ struct CallArguments {
     InlineExpression[ ] positional;
     NamedArgument[ ] named;
 }
+
+alias OptionalCallArguments = SumType!(NoCallArguments, CallArguments);
 
 struct FunctionReference {
     Identifier id;
@@ -67,7 +71,7 @@ struct MessageReference {
 struct TermReference {
     Identifier id;
     OptionalIdentifier attribute;
-    CallArguments arguments;
+    OptionalCallArguments arguments;
 }
 
 struct VariableReference {
@@ -75,6 +79,7 @@ struct VariableReference {
 }
 
 struct InlineExpression {
+nothrow pure @nogc:
     SumType!(
         StringLiteral,
         NumberLiteral,
@@ -92,11 +97,13 @@ struct InlineExpression {
             (const(Expression)* e) {
                 assert(e !is null, "Null `Expression` as part of `InlineExpression`");
             },
-            (_) { },
+            (ref _) { },
         );
     }
 
-    this(T)(T x) nothrow pure @nogc if (staticIndexOf!(T, typeof(value).Types) >= 0) {
+    this(typeof(value) x) { value = x; }
+
+    this(T)(T x) if (staticIndexOf!(T, typeof(value).Types) >= 0) {
         value = x;
     }
 }
@@ -124,6 +131,13 @@ struct SelectExpression {
     Variant[ ] variants;
 
     invariant {
+        selector.match!(
+            (ref const MessageReference _) { assert(false, "Message reference as a selector"); },
+            (ref const TermReference tr) =>
+                assert(!tr.attribute.name.empty, "Term reference as a selector"),
+            (const(Expression)* _) { assert(false, "Placeable as a selector"); },
+            (ref _) { },
+        );
         assert(!variants.empty, "Empty selection");
     }
 }
@@ -140,11 +154,14 @@ struct SelectExpression {
     We have to manually break the template chain by defining a struct.
 +/
 struct Expression {
+nothrow pure @nogc:
     SumType!(InlineExpression, SelectExpression) value;
 
     alias value this;
 
-    this(T)(T x) nothrow pure @nogc if (staticIndexOf!(T, typeof(value).Types) >= 0) {
+    this(typeof(value) x) { value = x; }
+
+    this(T)(T x) if (staticIndexOf!(T, typeof(value).Types) >= 0) {
         value = x;
     }
 }

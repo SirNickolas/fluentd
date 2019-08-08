@@ -21,7 +21,14 @@ mixin _declareSumType!(q{ErrorKind},
     q{ExpectedMessageField}, q{string id;},
     q{ExpectedTermField}, q{string id;},
     q{MissingValue}, q{},
-    q{UnpairedClosingBrace}, q{},
+    q{UnbalancedClosingBrace}, q{},
+    q{UnterminatedStringExpression}, q{},
+    q{ExpectedInlineExpression}, q{},
+    q{ForbiddenCallee}, q{},
+    q{InvalidArgumentName}, q{},
+    q{ExpectedLiteral}, q{},
+    q{DuplicatedNamedArgument}, q{string name;},
+    q{PositionalArgumentFollowsNamed}, q{},
 );
 
 struct ParserError {
