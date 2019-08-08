@@ -265,12 +265,23 @@ pure:
         ps.assertLast!q{a == '{'};
     }
     do {
+        import sumtype;
+
         ps.skipBlank();
         auto ie = parseInlineExpression();
         ps.skipBlank();
         scope(success) expect!'}'();
-        if (!ps.skipArrow())
+        if (!ps.skipArrow()) {
+            ie.match!(
+                (ref ast.TermReference tr) {
+                    if (!tr.attribute.name.empty)
+                        throw_(err.TermAttributeAsPlaceable());
+                },
+                (ref _) { },
+            );
             return ast.Expression(ie);
+        }
+
         auto variants = parseVariantList();
         ps.skipBlank();
         return ast.Expression(ast.SelectExpression(ie, variants));

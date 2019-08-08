@@ -7,9 +7,9 @@ import std.traits: ifTestable;
 import fluentd.syntax.parser.common;
 import fluentd.syntax.parser.span;
 
-private nothrow pure @safe @nogc:
+nothrow pure @safe @nogc:
 
-public enum TextElementTermination: ubyte {
+enum TextElementTermination: ubyte {
     placeableStart,
     lf,
     crlf,
@@ -17,7 +17,7 @@ public enum TextElementTermination: ubyte {
     unbalancedBrace,
 }
 
-public enum InlineExpressionStart: ubyte {
+enum InlineExpressionStart: ubyte {
     stringLiteral,
     numberLiteral,
     variableReference,
@@ -27,7 +27,7 @@ public enum InlineExpressionStart: ubyte {
     invalid,
 }
 
-public struct ParserStream {
+struct ParserStream {
 nothrow pure @nogc:
     private {
         string _source;
