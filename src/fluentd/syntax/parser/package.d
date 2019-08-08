@@ -56,6 +56,18 @@ S _stripTrailingSpaces(S: const(char)[ ])(S text) nothrow @nogc {
     return text.byCodeUnit().stripRight(' ').source;
 }
 
+string _processTrailingText(_PatternState state, string laggedText, const(char)[ ] mergedText)
+nothrow {
+    final switch (state) with (_PatternState) {
+    case haveNoText:
+        return null;
+    case haveText:
+        return _stripTrailingSpaces(laggedText);
+    case mergingTexts:
+        return _stripTrailingSpaces(mergedText).idup;
+    }
+}
+
 bool _isValidCallee(ast.Identifier id) nothrow @nogc {
     import std.algorithm.searching;
     import std.utf;
@@ -66,12 +78,12 @@ bool _isValidCallee(ast.Identifier id) nothrow @nogc {
 struct _Parser {
 pure:
     ParserStream ps;
-    Appender!(char[ ]) buffer;
-    Appender!(ast.PatternElement[ ]) patternElements;
-    Appender!(size_t[ ]) linePtrs; // Indices into `patternElements`.
-    Appender!(ast.Attribute[ ]) attrs;
-    Appender!(ast.InlineExpression[ ]) args;
-    Appender!(ast.NamedArgument[ ]) kwargs;
+    Appender!(char[ ]) bufText;
+    Appender!(ast.PatternElement[ ]) bufPatternElements;
+    Appender!(size_t[ ]) bufLinePtrs; // Indices into `bufPatternElements`.
+    Appender!(ast.Attribute[ ]) bufAttrs;
+    Appender!(ast.InlineExpression[ ]) bufArgs;
+    Appender!(ast.NamedArgument[ ]) bufKwargs;
     bool[string] seenKwargs;
 
     @property Span curSpan() const nothrow @nogc {
@@ -84,6 +96,17 @@ pure:
 
     void throw_(K)(K kind) const {
         throw_(kind, curSpan);
+    }
+
+    void clearBuffers() nothrow @trusted {
+        bufText.clear();
+        bufPatternElements.clear();
+        bufLinePtrs.clear();
+        // bufAttrs.clear(); // Not used in recursive methods.
+        bufArgs.clear();
+        bufKwargs.clear();
+        // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
+        seenKwargs.clear();
     }
 
     void expect(char c)() {
@@ -144,16 +167,21 @@ pure:
     ast.CallArguments parseArgumentList() {
         import sumtype;
 
-        args.clear();
-        kwargs.clear();
-        // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
-        () @trusted { seenKwargs.clear(); }();
+        const argsStart = bufArgs.data.length;
+        const kwargsStart = bufKwargs.data.length;
+        // Works because named arguments may only be literals.
+        assert(seenKwargs.empty, "Starting to parse an argument list with non-empty `seenKwargs`");
+        scope(success) {
+            bufArgs.shrinkTo(argsStart);
+            bufKwargs.shrinkTo(kwargsStart);
+            // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
+            () @trusted { seenKwargs.clear(); }();
+        }
 
         do {
             ps.skipBlank();
             if (ps.skip(')'))
-                return ast.CallArguments(args.data.dup, kwargs.data.dup);
-
+                goto finish;
             auto arg = parseInlineExpression();
             ps.skipBlank();
             if (ps.skip(':')) {
@@ -178,18 +206,23 @@ pure:
                     throw_(err.DuplicatedNamedArgument(argName.name));
                 seenKwargs[argName.name] = true;
 
-                kwargs ~= ast.NamedArgument(argName, argValue);
+                bufKwargs ~= ast.NamedArgument(argName, argValue);
                 ps.skipBlank();
             } else {
                 // Positional argument.
-                if (!kwargs.data.empty)
+                if (bufKwargs.data.length != kwargsStart)
                     throw_(err.PositionalArgumentFollowsNamed());
-                args ~= arg;
+                bufArgs ~= arg;
             }
         } while (ps.skip(','));
 
-        if (ps.skip(')'))
-            return ast.CallArguments(args.data.dup, kwargs.data.dup);
+        if (ps.skip(')')) {
+        finish:
+            return ast.CallArguments(
+                bufArgs.data[argsStart .. $].dup,
+                bufKwargs.data[kwargsStart .. $].dup,
+            );
+        }
         throw_(err.ExpectedCharRange(",)"));
         assert(false);
     }
@@ -288,7 +321,7 @@ pure:
     }
 
     void appendInlineText(ByteOffset start, ByteOffset end) nothrow {
-        patternElements ~= ast.PatternElement(
+        bufPatternElements ~= ast.PatternElement(
             // Cannot construct `TextElement` from an empty string (invariant violation).
             start != end ? ast.TextElement(ps.slice(start, end)) : ast.TextElement.init
         );
@@ -304,7 +337,7 @@ pure:
             final switch (ps.skipInlineText()) with (TextElementTermination) {
             case placeableStart:
                 appendInlineText(inlineTextStart, ByteOffset(ps.pos - 1));
-                patternElements ~= ast.PatternElement(parsePlaceable());
+                bufPatternElements ~= ast.PatternElement(parsePlaceable());
                 inlineTextStart = ps.pos;
                 continue;
 
@@ -330,17 +363,6 @@ pure:
         appendInlineText(inlineTextStart, ByteOffset(ps.pos - newlineLength));
     }
 
-    string processTrailingText(_PatternState state, string laggedText) nothrow {
-        final switch (state) with (_PatternState) {
-        case haveNoText:
-            return null;
-        case haveText:
-            return _stripTrailingSpaces(laggedText);
-        case mergingTexts:
-            return _stripTrailingSpaces(buffer.data).idup;
-        }
-    }
-
     ast.Pattern parsePattern() {
         import std.algorithm.comparison: among, min;
         import sumtype;
@@ -348,18 +370,23 @@ pure:
         if (ps.skip('}'))
             throw_(err.UnbalancedClosingBrace(), _byteAt(ByteOffset(ps.pos - 1)));
 
-        patternElements.clear();
-        linePtrs.clear();
+        const peStart = bufPatternElements.data.length;
+        const lpStart = bufLinePtrs.data.length;
+        scope(success) {
+            bufPatternElements.shrinkTo(peStart);
+            bufLinePtrs.shrinkTo(lpStart);
+        }
 
         // Parse the first line.
         parsePatternLine(ps.pos);
-        linePtrs ~= patternElements.data.length;
+        bufLinePtrs ~= bufPatternElements.data.length - peStart;
 
         // Parse the rest of the pattern.
-        size_t nonBlankLines = patternElements.data.length > 1 || patternElements.data[0].match!(
-            (ref ast.TextElement te) => !te.content.empty,
-            (ref _) => _unreachable!bool("The first line of a pattern does not start with text"),
-        );
+        size_t nonBlankLines =
+            bufPatternElements.data.length - peStart > 1 || bufPatternElements.data[peStart].match!(
+                (ref ast.TextElement te) => !te.content.empty,
+                (ref _) => _unreachable!bool("The first line of a pattern doesn't start with text"),
+            );
         size_t firstNonBlankLine = nonBlankLines - 1;
         size_t commonIndentation = size_t.max;
         while (true) {
@@ -376,12 +403,12 @@ pure:
                 parsePatternLine(lineStart);
 
                 // `+1` because we append after setting this variable.
-                nonBlankLines = linePtrs.data.length + 1;
+                nonBlankLines = bufLinePtrs.data.length - lpStart + 1;
                 if (firstNonBlankLine == size_t.max)
                     firstNonBlankLine = nonBlankLines - 1;
             } else if (ps.eof) // Blank lines are ignored, even if they are indented deeper.
                 break;
-            linePtrs ~= patternElements.data.length;
+            bufLinePtrs ~= bufPatternElements.data.length - peStart;
         }
 
         if (!nonBlankLines)
@@ -390,13 +417,15 @@ pure:
         // Dedent, merge adjacent text elements, and remove empty ones.
         _PatternState state;
         string laggedText;
-        buffer.clear();
+        const textStart = bufText.data.length;
+        scope(success) bufText.shrinkTo(textStart);
 
-        auto result = patternElements.data;
-        size_t r = firstNonBlankLine ? linePtrs.data[firstNonBlankLine - 1] : 0;
+        auto result = bufPatternElements.data[peStart .. $];
+        const linePtrs = bufLinePtrs.data[lpStart .. $];
+        size_t r = firstNonBlankLine ? linePtrs[firstNonBlankLine - 1] : 0;
         size_t w;
         // Iterate through parsed lines.
-        foreach (lineNumber, nextR; linePtrs.data[firstNonBlankLine .. nonBlankLines]) {
+        foreach (lineNumber, nextR; linePtrs[firstNonBlankLine .. nonBlankLines]) {
             // Append a newline unless it's the first line.
             if (lineNumber)
                 final switch (state) with (_PatternState) {
@@ -407,11 +436,10 @@ pure:
 
                 case haveText:
                     state = mergingTexts;
-                    buffer.clear();
-                    buffer ~= laggedText;
+                    bufText ~= laggedText;
                     goto case;
                 case mergingTexts:
-                    buffer ~= '\n';
+                    bufText ~= '\n';
                     break;
                 }
 
@@ -434,11 +462,10 @@ pure:
 
                         case haveText:
                             state = mergingTexts;
-                            buffer.clear();
-                            buffer ~= laggedText;
+                            bufText ~= laggedText;
                             goto case;
                         case mergingTexts:
-                            buffer ~= content;
+                            bufText ~= content;
                             break;
                         }
                     },
@@ -451,7 +478,8 @@ pure:
                             result[w++] = ast.TextElement(laggedText);
                             break;
                         case mergingTexts:
-                            result[w++] = ast.TextElement(buffer.data.idup);
+                            result[w++] = ast.TextElement(bufText.data[textStart .. $].idup);
+                            bufText.shrinkTo(textStart);
                             break;
                         }
                         state = _PatternState.haveNoText;
@@ -470,7 +498,7 @@ pure:
         }
 
         // Append trailing text, stripping spaces from it.
-        const content = processTrailingText(state, laggedText);
+        const content = _processTrailingText(state, laggedText, bufText.data[textStart .. $]);
         if (!content.empty)
             result[w++] = ast.TextElement(content);
 
@@ -486,7 +514,7 @@ pure:
     }
 
     ast.Attribute[ ] parseAttributes() {
-        attrs.clear();
+        bufAttrs.clear();
         ByteOffset lineStart;
         while (true) {
             lineStart = ps.pos;
@@ -496,10 +524,10 @@ pure:
             auto p = parseNamedPattern();
             if (p.value.elements.empty) // TODO: Report this error on the previous line.
                 throw_(err.MissingValue());
-            attrs ~= ast.Attribute(p.id, p.value);
+            bufAttrs ~= ast.Attribute(p.id, p.value);
         }
         ps.backtrack(lineStart);
-        return attrs.data.dup;
+        return bufAttrs.data.dup;
     }
 
     _MessageLike parseMessageLike() {
@@ -544,14 +572,14 @@ pure:
         else if (!ps.skipLineEnd())
             throw_(err.ExpectedCharRange(" "));
 
-        buffer.clear();
+        assert(bufText.data.empty, "Starting to parse a comment with non-empty text buffer");
         {
             ByteOffset lineStart;
             while (true) {
                 lineStart = ps.pos;
                 if (ps.skipCommentSigil(level) != level)
                     break; // A shorter comment (or not a comment at all).
-                buffer ~= lastLine;
+                bufText ~= lastLine;
                 if (ps.skip(' '))
                     lastLine = ps.skipLine();
                 else {
@@ -559,13 +587,14 @@ pure:
                     if (!ps.skipLineEnd())
                         break; // Either a longer comment or a syntax error.
                 }
-                buffer ~= '\n';
+                bufText ~= '\n';
             }
             ps.backtrack(lineStart);
         }
-        if (!buffer.data.empty) {
-            buffer ~= lastLine;
-            lastLine = buffer.data.idup;
+        if (!bufText.data.empty) {
+            bufText ~= lastLine;
+            lastLine = bufText.data.idup;
+            bufText.clear();
         }
         final switch (level) {
             case 1: return ast.AnyComment(ast.Comment(lastLine));
@@ -587,7 +616,7 @@ pure:
 _Parser _createParser(string source) nothrow {
     import std.array;
 
-    return _Parser(
+    _Parser p = {
         ParserStream(source),
         appender(uninitializedArray!(char[ ])(255)),
         appender(minimallyInitializedArray!(ast.PatternElement[ ])(15)),
@@ -595,7 +624,9 @@ _Parser _createParser(string source) nothrow {
         appender(minimallyInitializedArray!(ast.Attribute[ ])(7)),
         appender(minimallyInitializedArray!(ast.InlineExpression[ ])(7)),
         appender(minimallyInitializedArray!(ast.NamedArgument[ ])(15)),
-    );
+    };
+    p.clearBuffers();
+    return p;
 }
 
 public ParserResult parse(string source) nothrow {
@@ -619,6 +650,7 @@ public ParserResult parse(string source) nothrow {
                 errors ~= e.err;
                 p.ps.skipJunk();
                 rcEntry = ast.Junk(p.ps.slice(entryStart));
+                p.clearBuffers();
             } catch (Exception e)
                 assert(false, e.msg);
         }
