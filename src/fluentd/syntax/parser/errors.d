@@ -17,6 +17,7 @@ private template _declareSumType(string name, Spec...) {
 }
 
 mixin _declareSumType!(q{ErrorKind},
+    q{ExpectedToken}, q{char token;},
     q{ExpectedCharRange}, q{string range;},
     q{ExpectedMessageField}, q{string id;},
     q{ExpectedTermField}, q{string id;},

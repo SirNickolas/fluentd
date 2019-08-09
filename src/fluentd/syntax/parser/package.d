@@ -111,11 +111,9 @@ pure:
         seenKwargs.clear();
     }
 
-    void expect(char c)() {
-        if (!ps.skip(c)) {
-            enum range = c == '\\' ? `\\` : c ~ "";
-            throw_(err.ExpectedCharRange(range));
-        }
+    void expect(char c) {
+        if (!ps.skip(c))
+            throw_(err.ExpectedToken(c));
     }
 
     ast.StringLiteral parseStringLiteral() {
@@ -321,7 +319,7 @@ pure:
                     if (foundDefault)
                         throw_(err.MultipleDefaultVariants());
                     default_ = foundDefault = true;
-                    expect!'['();
+                    expect('[');
                 }
             }
 
@@ -329,7 +327,7 @@ pure:
             ps.skipBlank();
             const key = parseVariantKeyContent();
             ps.skipBlank();
-            expect!']'();
+            expect(']');
 
             ps.skipBlankInline();
             auto pattern = parsePattern();
@@ -356,7 +354,7 @@ pure:
         ps.skipBlank();
         auto ie = parseInlineExpression();
         ps.skipBlank();
-        scope(success) expect!'}'();
+        scope(success) expect('}');
         if (!ps.skipArrow()) {
             ie.match!(
                 (ref ast.TermReference tr) {
@@ -370,7 +368,7 @@ pure:
 
         ps.skipBlankInline();
         if (!ps.skipLineEnd())
-            throw_(err.ExpectedCharRange(`\n`));
+            throw_(err.ExpectedToken('\n'));
         auto variants = parseVariantList();
         ps.skipBlank();
         return ast.Expression(ast.SelectExpression(ie, variants));
@@ -564,7 +562,7 @@ pure:
     _NamedPattern parseNamedPattern() {
         const id = parseIdentifier();
         ps.skipBlankInline();
-        expect!'='();
+        expect('=');
         ps.skipBlankInline();
         return _NamedPattern(id, parsePattern());
     }
@@ -626,7 +624,7 @@ pure:
         if (ps.skip(' '))
             lastLine = ps.skipLine();
         else if (!ps.skipLineEnd())
-            throw_(err.ExpectedCharRange(" "));
+            throw_(err.ExpectedToken(' '));
 
         assert(bufText.data.empty, "Starting to parse a comment with non-empty text buffer");
         {
