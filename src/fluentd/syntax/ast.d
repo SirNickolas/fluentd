@@ -131,7 +131,7 @@ struct SelectExpression {
     Variant[ ] variants;
 
     invariant {
-        selector.match!(
+        selector.value.match!(
             (ref const MessageReference _) { assert(false, "Message reference as a selector"); },
             (ref const TermReference tr) =>
                 assert(!tr.attribute.name.empty, "Term reference as a selector"),

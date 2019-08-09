@@ -107,7 +107,7 @@ pure:
         bufArgs.clear();
         bufKwargs.clear();
         bufVariants.clear();
-        // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
+        // We don't hold pointers into the hash table, so it's `@safe` to clear and reuse it.
         seenKwargs.clear();
     }
 
@@ -174,7 +174,7 @@ pure:
         scope(success) {
             bufArgs.shrinkTo(argsStart);
             bufKwargs.shrinkTo(kwargsStart);
-            // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
+            // We don't hold pointers into the hash table, so it's `@safe` to clear and reuse it.
             () @trusted { seenKwargs.clear(); }();
         }
 
@@ -188,7 +188,7 @@ pure:
                 // Named argument.
                 ast.Identifier argName;
                 // Argument's name is parsed as a message reference (without an attribute).
-                if (arg.match!(
+                if (arg.value.match!(
                     (ref ast.MessageReference mr) {
                         if (!mr.attribute.name.empty)
                             return true;
@@ -356,7 +356,7 @@ pure:
         ps.skipBlank();
         scope(success) expect('}');
         if (!ps.skipArrow()) {
-            ie.match!(
+            ie.value.match!(
                 (ref ast.TermReference tr) {
                     if (!tr.attribute.name.empty)
                         throw_(err.TermAttributeAsPlaceable());
@@ -523,7 +523,9 @@ pure:
                             break;
                         }
                     },
-                    (ref ast.Expression e) {
+                    (ref ast.Expression e) @trusted {
+                        // We don't hold pointers to members of `SumType`s in `result`,
+                        // so reassigning them is `@safe`.
                         assert(w <= r, "Not enough space for rewriting the pattern");
                         // Append merged text.
                         final switch (state) with (_PatternState) {
@@ -553,8 +555,9 @@ pure:
 
         // Append trailing text, stripping spaces from it.
         const content = _processTrailingText(state, laggedText, bufText.data[textStart .. $]);
-        if (!content.empty)
+        if (!content.empty) () @trusted {
             result[w++] = ast.TextElement(content);
+        }();
 
         return ast.Pattern(result[0 .. w].dup);
     }
@@ -665,6 +668,19 @@ pure:
         else
             return ast.Entry(parseMessage());
     }
+
+    ast.ResourceEntry parseResourceEntry(ref Appender!(ParserError[ ]) errors) nothrow {
+        const entryStart = ps.pos;
+        try
+            return ast.ResourceEntry(parseEntry());
+        catch (_ParserException e) {
+            errors ~= e.err;
+            ps.skipJunk();
+            clearBuffers();
+            return ast.ResourceEntry(ast.Junk(ps.slice(entryStart)));
+        } catch (Exception e)
+            assert(false, e.msg);
+    }
 }
 
 _Parser _createParser(string source) nothrow {
@@ -692,30 +708,22 @@ public ParserResult parse(string source) nothrow {
 
     auto p = _createParser(source);
     ast.OptionalComment lastComment;
-    ast.ResourceEntry rcEntry;
     while (true) {
         const haveVSpace = p.ps.skipBlankBlock();
         if (p.ps.eof)
             break;
-        {
-            const entryStart = p.ps.pos;
-            try
-                rcEntry = p.parseEntry();
-            catch (_ParserException e) {
-                errors ~= e.err;
-                p.ps.skipJunk();
-                rcEntry = ast.Junk(p.ps.slice(entryStart));
-                p.clearBuffers();
-            } catch (Exception e)
-                assert(false, e.msg);
-        }
 
+        auto rcEntry = p.parseResourceEntry(errors);
         // Attach preceding comment to a message or term.
         lastComment.match!(
             (ref ast.Comment c) {
                 if (haveVSpace || rcEntry.match!(
                     (ref ast.Entry entry) => entry.match!(
-                        (ref msgOrTerm) {
+                        (ref msgOrTerm) @trusted {
+                            assert(msgOrTerm.comment.match!(
+                                (ast.NoComment _) => true,
+                                (ref _) => false,
+                            ), "Attempting to detach a comment");
                             msgOrTerm.comment = lastComment;
                             return false;
                         },
@@ -724,7 +732,7 @@ public ParserResult parse(string source) nothrow {
                     _ => true,
                 ))
                     entries ~= ast.ResourceEntry(ast.Entry(ast.AnyComment(c)));
-                lastComment = ast.NoComment();
+                () @trusted { lastComment = ast.NoComment(); }();
             },
             (ast.NoComment _) { },
         );
@@ -733,7 +741,7 @@ public ParserResult parse(string source) nothrow {
         if (rcEntry.match!(
             (ref ast.Entry entry) => entry.match!(
                 (ref ast.AnyComment ac) => ac.match!(
-                    (ref ast.Comment c) {
+                    (ref ast.Comment c) @trusted {
                         lastComment = c;
                         return false;
                     },
