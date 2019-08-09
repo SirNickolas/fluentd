@@ -84,6 +84,7 @@ pure:
     Appender!(ast.Attribute[ ]) bufAttrs;
     Appender!(ast.InlineExpression[ ]) bufArgs;
     Appender!(ast.NamedArgument[ ]) bufKwargs;
+    Appender!(ast.Variant[ ]) bufVariants;
     bool[string] seenKwargs;
 
     @property Span curSpan() const nothrow @nogc {
@@ -105,6 +106,7 @@ pure:
         // bufAttrs.clear(); // Not used in recursive methods.
         bufArgs.clear();
         bufKwargs.clear();
+        bufVariants.clear();
         // We don't hold pointers into the hash table, so it's safe to clear and reuse it.
         seenKwargs.clear();
     }
@@ -131,7 +133,7 @@ pure:
     }
 
     ast.Literal parseLiteral() {
-        switch (ps.classifyInlineExpression()) with (InlineExpressionStart) {
+        switch (ps.testInlineExpression()) with (InlineExpressionStart) {
         case stringLiteral:
             return ast.Literal(parseStringLiteral());
         case numberLiteral:
@@ -262,7 +264,7 @@ pure:
     }
 
     ast.InlineExpression parseInlineExpression() {
-        final switch (ps.classifyInlineExpression()) with (InlineExpressionStart) {
+        final switch (ps.testInlineExpression()) with (InlineExpressionStart) {
         case stringLiteral:
             return ast.InlineExpression(parseStringLiteral());
 
@@ -289,8 +291,59 @@ pure:
         }
     }
 
+    ast.VariantKey parseVariantKeyContent() {
+        switch (ps.testInlineExpression()) with (InlineExpressionStart) {
+        case numberLiteral:
+            return ast.VariantKey(parseNumberLiteral());
+        case identifier:
+            return ast.VariantKey(ast.Identifier(ps.skipIdentifier()));
+        default:
+            throw_(err.ForbiddenKey());
+            assert(false);
+        }
+    }
+
     ast.Variant[ ] parseVariantList() {
-        assert(false, "Not implemented");
+        const vStart = bufVariants.data.length;
+        scope(success) bufVariants.shrinkTo(vStart);
+
+        bool foundDefault;
+        while (true) {
+            bool default_;
+            {
+                const wsStart = ps.pos;
+                ps.skipBlank();
+                if (!ps.skip('[')) { // Test for '[' first.
+                    if (!ps.skip('*')) {
+                        ps.backtrack(wsStart);
+                        break;
+                    }
+                    if (foundDefault)
+                        throw_(err.MultipleDefaultVariants());
+                    default_ = foundDefault = true;
+                    expect!'['();
+                }
+            }
+
+            ps.assertLast!q{a == '['};
+            ps.skipBlank();
+            const key = parseVariantKeyContent();
+            ps.skipBlank();
+            expect!']'();
+
+            ps.skipBlankInline();
+            auto pattern = parsePattern();
+            if (pattern.elements.empty)
+                throw_(err.ExpectedValue());
+            bufVariants ~= ast.Variant(key, pattern, default_);
+        }
+
+        auto result = bufVariants.data[vStart .. $];
+        if (result.empty)
+            throw_(err.MissingVariants());
+        if (!foundDefault)
+            throw_(err.MissingDefaultVariant());
+        return result.dup;
     }
 
     ast.Expression parsePlaceable()
@@ -315,6 +368,9 @@ pure:
             return ast.Expression(ie);
         }
 
+        ps.skipBlankInline();
+        if (!ps.skipLineEnd())
+            throw_(err.ExpectedCharRange(`\n`));
         auto variants = parseVariantList();
         ps.skipBlank();
         return ast.Expression(ast.SelectExpression(ie, variants));
@@ -624,6 +680,7 @@ _Parser _createParser(string source) nothrow {
         appender(minimallyInitializedArray!(ast.Attribute[ ])(7)),
         appender(minimallyInitializedArray!(ast.InlineExpression[ ])(7)),
         appender(minimallyInitializedArray!(ast.NamedArgument[ ])(15)),
+        appender(minimallyInitializedArray!(ast.Variant[ ])(7)),
     };
     p.clearBuffers();
     return p;

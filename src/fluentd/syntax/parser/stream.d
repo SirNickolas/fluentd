@@ -250,7 +250,7 @@ nothrow pure @nogc:
         return TextElementTermination.eof;
     }
 
-    InlineExpressionStart classifyInlineExpression() const {
+    InlineExpressionStart testInlineExpression() const {
         mixin _fastAccess;
         with (InlineExpressionStart) {
             if (i == s.length)
@@ -282,7 +282,7 @@ nothrow pure @nogc:
     // TODO: Differentiate errors.
     string skipStringLiteral()
     in {
-        assert(classifyInlineExpression() == InlineExpressionStart.stringLiteral);
+        assert(testInlineExpression() == InlineExpressionStart.stringLiteral);
     }
     do {
         mixin _fastAccess;
@@ -321,7 +321,7 @@ nothrow pure @nogc:
 
     bool skipNumberLiteral()
     in {
-        assert(classifyInlineExpression() == InlineExpressionStart.numberLiteral);
+        assert(testInlineExpression() == InlineExpressionStart.numberLiteral);
     }
     do {
         mixin _fastAccess;

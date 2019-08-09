@@ -30,6 +30,11 @@ mixin _declareSumType!(q{ErrorKind},
     q{ExpectedLiteral}, q{},
     q{DuplicatedNamedArgument}, q{string name;},
     q{PositionalArgumentFollowsNamed}, q{},
+    q{ForbiddenKey}, q{},
+    q{ExpectedValue}, q{},
+    q{MissingVariants}, q{},
+    q{MissingDefaultVariant}, q{},
+    q{MultipleDefaultVariants}, q{},
 );
 
 struct ParserError {
