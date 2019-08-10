@@ -1,0 +1,3 @@
+[submodule "fluent"]
+    path = fluent
+    url = https://github.com/projectfluent/fluent
