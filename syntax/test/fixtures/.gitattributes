@@ -1,0 +1,3 @@
+*.ftl eol=lf
+/reference/crlf.ftl eol=crlf
+/reference/cr.ftl eol=cr
