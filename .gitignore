@@ -1,9 +1,2 @@
 .dub/
 dub.selections.json
-/*.exe
-/*.a
-/*.lib
-/*.so
-/*.dylib
-/*.dll
-/*.lst

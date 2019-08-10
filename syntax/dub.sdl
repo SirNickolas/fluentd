@@ -1,5 +1,5 @@
-name        "test"
-description "The unit testing subpackage."
+name        "syntax"
+description "Fluent parser and serializer."
 homepage    "https://github.com/SirNickolas/fluentd"
 authors     "Nickolay Bukreyev"
 copyright   "Copyright © 2019, Nickolay Bukreyev"
@@ -7,4 +7,8 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-dependency "fluentd" path=".."
+subPackage "./test/"
+
+dependency "sumtype" version="~>0.8.11"
+
+targetType "library"

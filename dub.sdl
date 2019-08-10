@@ -5,10 +5,8 @@ authors     "Nickolay Bukreyev"
 copyright   "Copyright © 2019, Nickolay Bukreyev"
 license     "MIT"
 
-toolchainRequirements frontend=">=2.078"
+subPackage "./syntax/"
 
-subPackage "./test/"
+dependency ":syntax" version="*"
 
-dependency "sumtype" version="~>0.8.11"
-
-targetType "library"
+targetType "none"

@@ -1,0 +1,10 @@
+name        "test"
+description "Tests for fluentd:syntax."
+homepage    "https://github.com/SirNickolas/fluentd"
+authors     "Nickolay Bukreyev"
+copyright   "Copyright © 2019, Nickolay Bukreyev"
+license     "MIT"
+
+toolchainRequirements frontend=">=2.078"
+
+dependency "syntax" path=".."
