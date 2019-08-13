@@ -80,6 +80,7 @@ bool _isValidCallee(ast.Identifier id) nothrow @nogc {
 struct _Parser {
 pure:
     ParserStream ps;
+    uint maxDepth;
     Appender!(char[ ]) bufText;
     Appender!(ast.PatternElement[ ]) bufPatternElements;
     Appender!(size_t[ ]) bufLinePtrs; // Indices into `bufPatternElements`.
@@ -186,6 +187,10 @@ pure:
             () @trusted { seenKwargs.clear(); }();
         }
 
+        if (!maxDepth--)
+            throw_(err.TooDeepNesting());
+        scope(success) maxDepth++;
+
         do {
             ps.skipBlank();
             if (ps.skip(')'))
@@ -284,10 +289,14 @@ pure:
         case identifier:
             return parseMessageOrFunctionReference();
 
-        case placeable:
+        case placeable: {
             assert(ps.test('{'));
             ps.skip();
+            if (!maxDepth--)
+                throw_(err.TooDeepNesting());
+            scope(success) maxDepth++;
             return ast.InlineExpression(new ast.Expression(parsePlaceable()));
+        }
 
         case invalid:
             throw_(err.ExpectedInlineExpression());
@@ -308,8 +317,13 @@ pure:
     }
 
     ast.Variant[ ] parseVariantList() {
+        if (!maxDepth--)
+            throw_(err.TooDeepNesting());
         const vStart = bufVariants.data.length;
-        scope(success) bufVariants.shrinkTo(vStart);
+        scope(success) {
+            bufVariants.shrinkTo(vStart);
+            maxDepth++;
+        }
 
         bool foundDefault;
         while (true) {
@@ -691,7 +705,8 @@ pure:
             return ast.Entry(parseMessage());
     }
 
-    ast.ResourceEntry parseResourceEntry(ref Appender!(ParserError[ ]) errors) nothrow {
+    ast.ResourceEntry parseResourceEntry(ref Appender!(ParserError[ ]) errors, uint initialDepth)
+    nothrow {
         const entryStart = ps.pos;
         try
             return ast.ResourceEntry(parseEntry());
@@ -699,17 +714,19 @@ pure:
             errors ~= e.err;
             ps.skipJunk();
             clearBuffers();
+            maxDepth = initialDepth;
             return ast.ResourceEntry(ast.Junk(ps.slice(entryStart)));
         } catch (Exception e)
             assert(false, e.msg);
     }
 }
 
-_Parser _createParser(string source) nothrow {
+_Parser _createParser(string source, uint maxDepth) nothrow {
     import std.array;
 
     _Parser p = {
         ParserStream(source),
+        maxDepth,
         appender(uninitializedArray!(char[ ])(255)),
         appender(minimallyInitializedArray!(ast.PatternElement[ ])(15)),
         appender(uninitializedArray!(size_t[ ])(7)),
@@ -722,18 +739,18 @@ _Parser _createParser(string source) nothrow {
     return p;
 }
 
-public ParserResult parse(string source) nothrow {
+public ParserResult parse(string source, uint maxDepth = 100) nothrow {
     auto entries = appender!(ast.ResourceEntry[ ]);
     auto errors = appender!(ParserError[ ]);
 
-    auto p = _createParser(source);
+    auto p = _createParser(source, maxDepth);
     ast.OptionalComment lastComment;
     while (true) {
         const haveVSpace = p.ps.skipBlankBlock();
         if (p.ps.eof)
             break;
 
-        auto rcEntry = p.parseResourceEntry(errors);
+        auto rcEntry = p.parseResourceEntry(errors, maxDepth);
         // Attach preceding comment to a message or term.
         lastComment.match!(
             (ref ast.Comment c) {

@@ -39,6 +39,7 @@ mixin _declareSumType!(q{ErrorKind},
     q{MissingVariants}, q{},
     q{MissingDefaultVariant}, q{},
     q{MultipleDefaultVariants}, q{},
+    q{TooDeepNesting}, q{},
 );
 
 struct ParserError {

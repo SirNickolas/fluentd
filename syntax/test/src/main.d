@@ -20,7 +20,7 @@ JSONValue parseJSONFile(string fileName) @system {
 }
 
 ftl.Resource parse(string source) nothrow pure {
-    return ftl.parse(source).resource;
+    return ftl.parse(source, 6).resource;
 }
 
 bool test(string fileName) @system
