@@ -5,11 +5,11 @@ import ftl = fluentd.syntax;
 
 private @safe:
 
-JSONValue parseJSONFile(string filename) @system {
+JSONValue parseJSONFile(string fileName) @system {
     import std.mmfile;
     import std.typecons: scoped;
 
-    auto mmf = scoped!MmFile(filename);
+    auto mmf = scoped!MmFile(fileName);
     return parseJSON(cast(const(char)[ ])(cast(MmFile)mmf)[ ]);
 }
 
@@ -17,34 +17,55 @@ ftl.Resource parse(string source) nothrow pure {
     return ftl.parse(source).resource;
 }
 
-void test(string filename) @system
+bool test(string fileName) @system
 in {
     import std.algorithm.searching: endsWith;
 
-    assert(filename.endsWith(".ftl"));
+    assert(fileName.endsWith(".ftl"));
 }
 do {
     import std.stdio: File;
 
     // `stdf.readText` UTF-validates the file, and we don't want it to happen here.
-    immutable rc = parse(cast(string)stdf.read(filename));
+    immutable rc = parse(cast(string)stdf.read(fileName));
     immutable ourJSON = ftl.convertTo!JSONValue(rc);
-    File(filename[0 .. $ - 3] ~ "out.json", "w").writeln(ourJSON.toPrettyString());
+    File(fileName[0 .. $ - 3] ~ "out.json", "w").writeln(ourJSON.toPrettyString());
+    return ourJSON == parseJSONFile(fileName[0 .. $ - 3] ~ "json");
+}
 
-    const refJSON = parseJSONFile(filename[0 .. $ - 3] ~ "json");
-    // TODO: Compare `ourJSON` against `refJSON`.
+bool testAndReport(string fileName, string testName) @system {
+    import std.path: baseName;
+    import std.stdio;
+
+    try
+        if (test(fileName))
+            return true;
+    catch (Exception e) {
+        write(e, "\n\n");
+        goto failure;
+    }
+    writefln("Test `%s` failed.", testName);
+failure:
+    stdout.flush();
+    return false;
 }
 
 int main() @system {
     import std.stdio;
+    import std.string: makeTransTable, translate;
 
-    int ret = 0;
-    foreach (string filename; stdf.dirEntries("fixtures", "*.ftl", stdf.SpanMode.breadth))
-        try
-            test(filename);
-        catch (Exception e) {
-            writeln(e);
-            ret = 1;
-        }
-    return ret;
+    uint ok, failed;
+    foreach (string fileName; stdf.dirEntries("fixtures", "*.ftl", stdf.SpanMode.breadth))
+        if (testAndReport(fileName, fileName[9 .. $ - 4].translate(makeTransTable(`\`, "/"))))
+            ok++;
+        else
+            failed++;
+
+    if (!failed) {
+        writefln("%s OK.", ok);
+        return 0;
+    }
+
+    writefln("%s FAILURES, %s OK.", failed, ok);
+    return 1;
 }
