@@ -114,16 +114,16 @@ alias PatternElement = SumType!(TextElement, Expression);
 
 struct Pattern {
     PatternElement[ ] elements;
+
+    invariant {
+        assert(!elements.empty, "Empty pattern");
+    }
 }
 
 struct Variant {
     VariantKey key;
     Pattern value;
     bool default_;
-
-    invariant {
-        assert(!value.elements.empty, "Empty variant");
-    }
 }
 
 struct SelectExpression {
@@ -189,20 +189,23 @@ alias AnyComment = SumType!(Comment, GroupComment, ResourceComment);
 struct Attribute {
     Identifier id;
     Pattern value;
-
-    invariant {
-        assert(!value.elements.empty, "Empty attribute");
-    }
 }
+
+struct NoPattern { }
+
+alias OptionalPattern = SumType!(NoPattern, Pattern);
 
 struct Message {
     Identifier id;
-    Pattern value;
+    OptionalPattern value;
     Attribute[ ] attributes;
     OptionalComment comment;
 
     invariant {
-        assert(!value.elements.empty || !attributes.empty, "Empty message");
+        value.match!(
+            (NoPattern _) => assert(!attributes.empty, "Empty message"),
+            (ref _) { },
+        );
     }
 }
 
@@ -211,10 +214,6 @@ struct Term {
     Pattern value;
     Attribute[ ] attributes;
     OptionalComment comment;
-
-    invariant {
-        assert(!value.elements.empty, "Empty term");
-    }
 }
 
 alias Entry = SumType!(Message, Term, AnyComment);

@@ -9,14 +9,6 @@ template convertTo(JSON) {
 
     nothrow pure @safe:
 
-    /+
-    // Pointers:
-
-    JSON convertTo(T)(const(T)* ptr) {
-        return ptr is null ? JSON.init : convertTo(*ptr);
-    }
-    +/
-
     // Arrays:
 
     JSON convertTo(T)(const(T)[ ] items) {
@@ -64,33 +56,32 @@ template convertTo(JSON) {
 
     // Special cases:
 
+    JSON convertTo(const ast.NoCallArguments _) {
+        return JSON.init;
+    }
+
+    JSON convertTo(const ast.NoComment _) {
+        return JSON.init;
+    }
+
+    JSON convertTo(const ast.NoPattern _) {
+        return JSON.init;
+    }
+
     JSON convertTo(const ast.OptionalIdentifier value) {
         import std.range.primitives: empty;
 
         return value.name.empty ? JSON.init : convertTo(ast.Identifier(value.name));
     }
 
-    JSON convertTo(const ast.NoCallArguments _) {
-        return JSON.init;
-    }
-
     JSON convertTo(const ast.PatternElement pe) {
         return pe.match!(
-            (const ast.Expression e) => JSON([
+            (ref const ast.Expression e) => JSON([
                 "type": JSON("Placeable"),
                 "expression": convertTo(e),
             ]),
-            x => convertTo(x),
+            (ref x) => convertTo(x),
         );
-    }
-
-    JSON convertTo(const ast.Pattern pattern) {
-        import std.range.primitives: empty;
-
-        return pattern.elements.empty ? JSON.init : JSON([
-            "type": JSON("Pattern"),
-            "elements": convertTo(pattern.elements),
-        ]);
     }
 
     JSON convertTo(const(ast.Expression)* e) {
@@ -98,10 +89,6 @@ template convertTo(JSON) {
             "type": JSON("Placeable"),
             "expression": convertTo(*e),
         ]);
-    }
-
-    JSON convertTo(const ast.NoComment _) {
-        return JSON.init;
     }
 
     JSON convertTo(const ast.Junk junk) {

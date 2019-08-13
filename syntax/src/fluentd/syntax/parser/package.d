@@ -9,6 +9,8 @@ import fluentd.syntax.parser.stream;
 import ast = fluentd.syntax.ast;
 import err = fluentd.syntax.parser.errors: ErrorKind, ParserError;
 
+import sumtype;
+
 private pure @safe:
 
 public struct ParserResult {
@@ -27,7 +29,7 @@ class _ParserException: Exception {
 
 struct _NamedPattern {
     ast.Identifier id;
-    ast.Pattern value;
+    ast.OptionalPattern value;
 }
 
 struct _MessageLike {
@@ -91,20 +93,20 @@ pure:
         return _byteAt(ps.pos);
     }
 
-    void throw_(ErrorKind kind, Span span) const {
+    T throw_(T = void, K: ErrorKind)(K kind, Span span) const {
         throw new _ParserException(ParserError(span, kind));
     }
 
-    void throw_(K)(K kind, Span span) const {
-        throw_(ErrorKind(kind), span);
+    T throw_(T = void, K)(K kind, Span span) const {
+        return throw_!T(ErrorKind(kind), span);
     }
 
-    void throw_(ErrorKind kind) const {
-        throw_(kind, curSpan);
+    T throw_(T = void, K: ErrorKind)(K kind) const {
+        return throw_!T(kind, curSpan);
     }
 
-    void throw_(K)(K kind) const {
-        throw_(ErrorKind(kind));
+    T throw_(T = void, K)(K kind) const {
+        return throw_!T(ErrorKind(kind));
     }
 
     void clearBuffers() nothrow @trusted {
@@ -173,8 +175,6 @@ pure:
     }
 
     ast.CallArguments parseArgumentList() {
-        import sumtype;
-
         const argsStart = bufArgs.data.length;
         const kwargsStart = bufKwargs.data.length;
         // Works because named arguments may only be literals.
@@ -252,8 +252,6 @@ pure:
     }
 
     ast.InlineExpression parseMessageOrFunctionReference() {
-        import sumtype;
-
         const id = ast.Identifier(ps.skipIdentifier());
         const attr = parseAttributeAccessor();
         if (!attr.name.empty)
@@ -338,10 +336,10 @@ pure:
             expect(']');
 
             ps.skipBlankInline();
-            auto pattern = parsePattern();
-            if (pattern.elements.empty)
-                throw_(err.MissingValue());
-            bufVariants ~= ast.Variant(key, pattern, default_);
+            parsePattern().match!(
+                (ast.NoPattern _) => throw_(err.MissingValue()),
+                (ref ast.Pattern pattern) => bufVariants ~= ast.Variant(key, pattern, default_),
+            );
         }
 
         auto result = bufVariants.data[vStart .. $];
@@ -357,8 +355,6 @@ pure:
         ps.assertLast!q{a == '{'};
     }
     do {
-        import sumtype;
-
         ps.skipBlank();
         auto ie = parseInlineExpression();
         ps.skipBlank();
@@ -388,7 +384,7 @@ pure:
                 if (tr.attribute.name.empty)
                     throw_(err.TermReferenceAsSelector());
             },
-            (ref _) => throw_(err.PlaceableAsSelector()),
+            (ast.Expression* _) => throw_(err.ExpectedSimpleExpressionAsSelector()),
         );
 
         ps.skipBlankInline();
@@ -442,9 +438,8 @@ pure:
         appendInlineText(inlineTextStart, ByteOffset(ps.pos - newlineLength));
     }
 
-    ast.Pattern parsePattern() {
+    ast.OptionalPattern parsePattern() {
         import std.algorithm.comparison: among, min;
-        import sumtype;
 
         if (ps.skip('}'))
             throw_(err.UnbalancedClosingBrace(), _byteAt(ByteOffset(ps.pos - 1)));
@@ -491,7 +486,7 @@ pure:
         }
 
         if (!nonBlankLines)
-            return ast.Pattern.init;
+            return ast.OptionalPattern(ast.NoPattern());
 
         // Dedent, merge adjacent text elements, and remove empty ones.
         _PatternState state;
@@ -584,7 +579,7 @@ pure:
             result[w++] = ast.TextElement(content);
         }();
 
-        return ast.Pattern(result[0 .. w].dup);
+        return ast.OptionalPattern(ast.Pattern(result[0 .. w].dup));
     }
 
     _NamedPattern parseNamedPattern() {
@@ -603,10 +598,11 @@ pure:
             ps.skipBlankInline();
             if (!ps.skip('.'))
                 break;
-            auto p = parseNamedPattern();
-            if (p.value.elements.empty) // TODO: Report this error on the previous line.
-                throw_(err.MissingValue());
-            bufAttrs ~= ast.Attribute(p.id, p.value);
+            auto np = parseNamedPattern();
+            np.value.match!(
+                (ast.NoPattern _) => throw_(err.MissingValue()),
+                (ref ast.Pattern pattern) => bufAttrs ~= ast.Attribute(np.id, pattern),
+            );
         }
         ps.backtrack(lineStart);
         return bufAttrs.data.dup;
@@ -616,29 +612,30 @@ pure:
         return _MessageLike(parseNamedPattern(), parseAttributes());
     }
 
-    T parseMessageLike(T, alias validate, E)() {
+    ast.Message parseMessage() {
         const entryStart = ps.pos;
         auto m = parseMessageLike();
-        if (!validate(m))
-            throw_(E(m.pattern.id.name), Span(entryStart, ps.pos));
-        return T(m.pattern.id, m.pattern.value, m.attributes);
+        m.pattern.value.match!(
+            (ast.NoPattern _) {
+                if (m.attributes.empty)
+                    throw_(err.ExpectedMessageField(), Span(entryStart, ps.pos));
+            },
+            (ref _) { },
+        );
+        return ast.Message(m.pattern.id, m.pattern.value, m.attributes);
     }
-
-    alias parseMessage = parseMessageLike!(
-        ast.Message,
-        (ref _MessageLike m) => !m.pattern.value.elements.empty || !m.attributes.empty,
-        err.ExpectedMessageField,
-    );
 
     ast.Term parseTerm()
     in {
         ps.assertLast!q{a == '-'};
     }
     do {
-        return parseMessageLike!(
-            ast.Term,
-            (ref _MessageLike m) => !m.pattern.value.elements.empty,
-            err.ExpectedTermField,
+        const entryStart = ps.pos;
+        auto m = parseMessageLike();
+        return m.pattern.value.match!(
+            (ast.NoPattern _) =>
+                throw_!(ast.Term)(err.ExpectedTermField(), Span(entryStart, ps.pos)),
+            (ref ast.Pattern pattern) => ast.Term(m.pattern.id, pattern, m.attributes),
         );
     }
 
@@ -726,8 +723,6 @@ _Parser _createParser(string source) nothrow {
 }
 
 public ParserResult parse(string source) nothrow {
-    import sumtype;
-
     auto entries = appender!(ast.ResourceEntry[ ]);
     auto errors = appender!(ParserError[ ]);
 
