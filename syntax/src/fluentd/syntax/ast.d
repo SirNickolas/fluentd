@@ -11,10 +11,10 @@ import sumtype;
     Expressions:
 +/
 struct TextElement {
-    string content;
+    string value;
 
     invariant {
-        assert(!content.empty, "Empty text");
+        assert(!value.empty, "Empty text");
     }
 }
 

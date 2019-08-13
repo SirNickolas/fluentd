@@ -9,11 +9,13 @@ template convertTo(JSON) {
 
     nothrow pure @safe:
 
+    /+
     // Pointers:
 
     JSON convertTo(T)(const(T)* ptr) {
         return ptr is null ? JSON.init : convertTo(*ptr);
     }
+    +/
 
     // Arrays:
 
@@ -72,6 +74,16 @@ template convertTo(JSON) {
         return JSON.init;
     }
 
+    JSON convertTo(const ast.PatternElement pe) {
+        return pe.match!(
+            (const ast.Expression e) => JSON([
+                "type": JSON("Placeable"),
+                "expression": convertTo(e),
+            ]),
+            x => convertTo(x),
+        );
+    }
+
     JSON convertTo(const ast.Pattern pattern) {
         import std.range.primitives: empty;
 
@@ -81,8 +93,23 @@ template convertTo(JSON) {
         ]);
     }
 
+    JSON convertTo(const(ast.Expression)* e) {
+        return e is null ? JSON.init : JSON([
+            "type": JSON("Placeable"),
+            "expression": convertTo(*e),
+        ]);
+    }
+
     JSON convertTo(const ast.NoComment _) {
         return JSON.init;
+    }
+
+    JSON convertTo(const ast.Junk junk) {
+        return JSON([
+            "type": JSON("Junk"),
+            "annotations": JSON(JSON[ ].init),
+            "content": convertTo(junk.content),
+        ]);
     }
 }
 

@@ -91,12 +91,20 @@ pure:
         return _byteAt(ps.pos);
     }
 
+    void throw_(ErrorKind kind, Span span) const {
+        throw new _ParserException(ParserError(span, kind));
+    }
+
     void throw_(K)(K kind, Span span) const {
-        throw new _ParserException(ParserError(span, ErrorKind(kind)));
+        throw_(ErrorKind(kind), span);
+    }
+
+    void throw_(ErrorKind kind) const {
+        throw_(kind, curSpan);
     }
 
     void throw_(K)(K kind) const {
-        throw_(kind, curSpan);
+        throw_(ErrorKind(kind));
     }
 
     void clearBuffers() nothrow @trusted {
@@ -332,7 +340,7 @@ pure:
             ps.skipBlankInline();
             auto pattern = parsePattern();
             if (pattern.elements.empty)
-                throw_(err.ExpectedValue());
+                throw_(err.MissingValue());
             bufVariants ~= ast.Variant(key, pattern, default_);
         }
 
@@ -365,6 +373,23 @@ pure:
             );
             return ast.Expression(ie);
         }
+
+        ie.value.match!(
+            (ast.StringLiteral _) { },
+            (ast.NumberLiteral _) { },
+            (ast.VariableReference _) { },
+            (ref ast.FunctionReference _) { },
+            (ref ast.MessageReference mr) => throw_(
+                mr.attribute.name.empty ? (
+                    ErrorKind(err.MessageReferenceAsSelector())
+                ) : ErrorKind(err.MessageAttributeAsSelector())
+            ),
+            (ref ast.TermReference tr) {
+                if (tr.attribute.name.empty)
+                    throw_(err.TermReferenceAsSelector());
+            },
+            (ref _) => throw_(err.PlaceableAsSelector()),
+        );
 
         ps.skipBlankInline();
         if (!ps.skipLineEnd())
@@ -438,7 +463,7 @@ pure:
         // Parse the rest of the pattern.
         size_t nonBlankLines =
             bufPatternElements.data.length - peStart > 1 || bufPatternElements.data[peStart].match!(
-                (ref ast.TextElement te) => !te.content.empty,
+                (ref ast.TextElement te) => !te.value.empty,
                 (ref _) => _unreachable!bool("The first line of a pattern doesn't start with text"),
             );
         size_t firstNonBlankLine = nonBlankLines - 1;
@@ -503,7 +528,7 @@ pure:
                 pe.match!(
                     (ref ast.TextElement te) {
                         // Dedent unless it's the very first line (directly after `=` or `]`).
-                        const content = atBOL ? te.content[commonIndentation .. $] : te.content;
+                        const content = atBOL ? te.value[commonIndentation .. $] : te.value;
                         atBOL = false;
                         if (content.empty)
                             return;
@@ -753,6 +778,11 @@ public ParserResult parse(string source) nothrow {
         ))
             entries ~= rcEntry;
     }
+
+    lastComment.match!(
+        (ref ast.Comment c) => entries ~= ast.ResourceEntry(ast.Entry(ast.AnyComment(c))),
+        (ast.NoComment _) { },
+    );
 
     return ParserResult(ast.Resource(entries.data), errors.data);
 }
