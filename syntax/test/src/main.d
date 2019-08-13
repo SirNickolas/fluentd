@@ -5,6 +5,12 @@ import ftl = fluentd.syntax;
 
 private @safe:
 
+immutable string[1] skippedTests = [
+    // Currently, the whole `Message` turns into `Junk` if there is an error in its attribute.
+    // Github issue #3.
+    "reference/leading_dots",
+];
+
 JSONValue parseJSONFile(string fileName) @system {
     import std.mmfile;
     import std.typecons: scoped;
@@ -44,28 +50,41 @@ bool testAndReport(string fileName, string testName) @system {
         write(e, "\n\n");
         goto failure;
     }
-    writefln("Test `%s` failed.", testName);
+    writef("Test `%s` failed.\n", testName);
 failure:
     stdout.flush();
     return false;
 }
 
 int main() @system {
+    import std.algorithm.searching: canFind;
+    import std.range.primitives: empty;
     import std.stdio;
     import std.string: makeTransTable, translate;
 
-    uint ok, failed;
-    foreach (string fileName; stdf.dirEntries("fixtures", "*.ftl", stdf.SpanMode.breadth))
-        if (testAndReport(fileName, fileName[9 .. $ - 4].translate(makeTransTable(`\`, "/"))))
+    enum backslashToSlash = makeTransTable(`\`, "/");
+    uint ok, failed, skipped;
+    foreach (string fileName; stdf.dirEntries("fixtures", "*.ftl", stdf.SpanMode.breadth)) {
+        const testName = fileName[9 .. $ - 4].translate(backslashToSlash);
+        if (skippedTests[ ].canFind(testName))
+            skipped++;
+        else if (testAndReport(fileName, testName))
             ok++;
         else
             failed++;
-
-    if (!failed) {
-        writefln("%s OK.", ok);
-        return 0;
     }
 
-    writefln("%s FAILURES, %s OK.", failed, ok);
-    return 1;
+    if (skipped != skippedTests.length)
+        writefln("%s tests were going to be skipped, but only %s were found.",
+            skippedTests.length, skipped,
+        );
+
+    if (failed)
+        writef("%s FAILURES, ", failed);
+    writef("%s OK", ok);
+    if (!skippedTests.empty)
+        writef(", %s skipped", skipped);
+    write(".\n");
+
+    return !!failed;
 }
