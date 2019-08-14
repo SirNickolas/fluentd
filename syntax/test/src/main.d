@@ -30,12 +30,15 @@ in {
     assert(fileName.endsWith(".ftl"));
 }
 do {
+    import std.path: dirName;
     import std.stdio: File;
 
     // `stdf.readText` UTF-validates the file, and we don't want it to happen here.
     immutable rc = parse(cast(string)stdf.read(fileName));
     immutable ourJSON = ftl.convertTo!JSONValue(rc);
-    File(fileName[0 .. $ - 3] ~ "out.json", "w").writeln(ourJSON.toPrettyString());
+    const filePath = dirName(fileName);
+    File(filePath ~ "/." ~ fileName[filePath.length + 1 .. $ - 3] ~ "out.json", "w")
+        .writeln(ourJSON.toPrettyString());
     return ourJSON == parseJSONFile(fileName[0 .. $ - 3] ~ "json");
 }
 
