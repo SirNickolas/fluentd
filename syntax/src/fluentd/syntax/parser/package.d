@@ -77,6 +77,12 @@ bool _isValidCallee(ast.Identifier id) nothrow @nogc {
     return id.name.byCodeUnit().all!(c => _isCallee(c));
 }
 
+string _sanitize(string s) nothrow @trusted {
+    import std.encoding;
+
+    return sanitize(s);
+}
+
 struct _Parser {
 pure:
     ParserStream ps;
@@ -128,9 +134,16 @@ pure:
     }
 
     ast.StringLiteral parseStringLiteral() {
+        import std.encoding: validLength;
+
         const s = ps.skipStringLiteral();
         if (s is null) // TODO: Differentiate errors.
             throw_(err.UnterminatedStringExpression());
+        const prefix = validLength(s);
+        if (prefix != s.length) {
+            // `-1` for closing `"`.
+            throw_(err.InvalidUTF(), _byteAt(ByteOffset(ps.pos - 1 - s.length + prefix)));
+        }
         return ast.StringLiteral(s);
     }
 
@@ -409,11 +422,19 @@ pure:
         return ast.Expression(ast.SelectExpression(ie, variants));
     }
 
-    void appendInlineText(ByteOffset start, ByteOffset end) nothrow {
-        bufPatternElements ~= ast.PatternElement(
+    void appendInlineText(ByteOffset start, ByteOffset end) {
+        import std.encoding: validLength;
+
+        if (start == end) {
             // Cannot construct `TextElement` from an empty string (invariant violation).
-            start != end ? ast.TextElement(ps.slice(start, end)) : ast.TextElement.init
-        );
+            bufPatternElements ~= ast.PatternElement(ast.TextElement.init);
+            return;
+        }
+        const s = ps.slice(start, end);
+        const prefix = validLength(s);
+        if (prefix != s.length)
+            throw_(err.InvalidUTF(), _byteAt(ByteOffset(start + prefix)));
+        bufPatternElements ~= ast.PatternElement(ast.TextElement(s));
     }
 
     void parsePatternLine(ByteOffset inlineTextStart) {
@@ -658,11 +679,17 @@ pure:
         ps.assertLast!q{a == '#'};
     }
     do {
+        import std.encoding: isValid, validLength;
+
         const level = cast(ubyte)(ps.skipCommentSigil(2) + 1);
         string lastLine;
-        if (ps.skip(' '))
+        if (ps.skip(' ')) {
+            const commentStart = ps.pos;
             lastLine = ps.skipLine();
-        else if (!ps.skipLineEnd())
+            const prefix = validLength(lastLine);
+            if (prefix != lastLine.length)
+                throw_(err.InvalidUTF(), _byteAt(ByteOffset(commentStart + prefix)));
+        } else if (!ps.skipLineEnd())
             throw_(err.ExpectedToken(' '));
 
         assert(bufText.data.empty, "Starting to parse a comment with non-empty text buffer");
@@ -673,9 +700,13 @@ pure:
                 if (ps.skipCommentSigil(level) != level)
                     break; // A shorter comment (or not a comment at all).
                 bufText ~= lastLine;
-                if (ps.skip(' '))
+                if (ps.skip(' ')) {
                     lastLine = ps.skipLine();
-                else {
+                    if (!isValid(lastLine)) {
+                        lastLine = null;
+                        break;
+                    }
+                } else {
                     lastLine = null;
                     if (!ps.skipLineEnd())
                         break; // Either a longer comment or a syntax error.
@@ -715,7 +746,8 @@ pure:
             ps.skipJunk();
             clearBuffers();
             maxDepth = initialDepth;
-            return ast.ResourceEntry(ast.Junk(ps.slice(entryStart)));
+            // Somewhat surprising, junk must also be valid UTF.
+            return ast.ResourceEntry(ast.Junk(_sanitize(ps.slice(entryStart))));
         } catch (Exception e)
             assert(false, e.msg);
     }
