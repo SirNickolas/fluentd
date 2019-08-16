@@ -12,10 +12,6 @@ import sumtype;
 +/
 struct TextElement {
     string value;
-
-    invariant {
-        assert(!value.empty, "Empty text");
-    }
 }
 
 struct Identifier {
@@ -131,7 +127,7 @@ struct SelectExpression {
     Variant[ ] variants;
 
     invariant {
-        selector.value.match!(
+        selector.match!(
             (ref const MessageReference _) { assert(false, "Message reference as a selector"); },
             (ref const TermReference tr) =>
                 assert(!tr.attribute.name.empty, "Term reference as a selector"),

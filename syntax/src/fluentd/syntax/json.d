@@ -21,12 +21,7 @@ template convertTo(JSON) {
     // Sum types:
 
     JSON convertTo(T: SumType!Args, Args...)(const T value) {
-        // Can drop the `else` branch when the fix for https://github.com/pbackus/sumtype/issues/28
-        // is released.
-        static if (is(T == SumType!Args))
-            return value.match!convertTo();
-        else
-            return value.value.match!convertTo();
+        return value.match!convertTo();
     }
 
     // Structs:

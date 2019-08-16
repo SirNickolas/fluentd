@@ -214,7 +214,7 @@ pure:
                 // Named argument.
                 ast.Identifier argName;
                 // Argument's name is parsed as a message reference (without an attribute).
-                if (arg.value.match!(
+                if (arg.match!(
                     (ref ast.MessageReference mr) {
                         if (!mr.attribute.name.empty)
                             return true;
@@ -387,7 +387,7 @@ pure:
         ps.skipBlank();
         scope(success) expect('}');
         if (!ps.skipArrow()) {
-            ie.value.match!(
+            ie.match!(
                 (ref ast.TermReference tr) {
                     if (!tr.attribute.name.empty)
                         throw_(err.TermAttributeAsPlaceable());
@@ -397,7 +397,7 @@ pure:
             return ast.Expression(ie);
         }
 
-        ie.value.match!(
+        ie.match!(
             (ast.StringLiteral _) { },
             (ast.NumberLiteral _) { },
             (ast.VariableReference _) { },
@@ -425,11 +425,6 @@ pure:
     void appendInlineText(ByteOffset start, ByteOffset end) {
         import std.encoding: validLength;
 
-        if (start == end) {
-            // Cannot construct `TextElement` from an empty string (invariant violation).
-            bufPatternElements ~= ast.PatternElement(ast.TextElement.init);
-            return;
-        }
         const s = ps.slice(start, end);
         const prefix = validLength(s);
         if (prefix != s.length)

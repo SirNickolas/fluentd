@@ -9,6 +9,6 @@ toolchainRequirements frontend=">=2.078"
 
 subPackage "./test/"
 
-dependency "sumtype" version="~>0.8.11"
+dependency "sumtype" version="~>0.8.12"
 
 targetType "library"
