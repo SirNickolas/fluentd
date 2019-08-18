@@ -1,0 +1,8 @@
+/test
+/*.exe
+/*.a
+/*.lib
+/*.so
+/*.dylib
+/*.dll
+/*.lst
