@@ -4,8 +4,8 @@ import std.algorithm.comparison: among;
 import std.functional: unaryFun;
 import std.traits: ifTestable;
 
-import fluentd.syntax.parser.common;
 import fluentd.syntax.parser.span;
+import fluentd.utils.lexing;
 
 nothrow pure @safe @nogc:
 
@@ -25,6 +25,10 @@ enum InlineExpressionStart: ubyte {
     identifier,
     placeable,
     invalid,
+}
+
+private bool _isEntryStart(char c) {
+    return isAlpha(c) || c.among!('-', '#');
 }
 
 struct ParserStream {
@@ -226,11 +230,11 @@ nothrow pure @nogc:
 
     string skipIdentifier() {
         mixin _fastAccess;
-        if (i == s.length || !_isAlpha(s[i]))
+        if (i == s.length || !isAlpha(s[i]))
             return null;
         scope(success) _pos = i;
         const start = i;
-        while (++i < s.length && _isIdent(s[i])) { }
+        while (++i < s.length && isIdent(s[i])) { }
         return s[start .. i];
     }
 
@@ -260,16 +264,16 @@ nothrow pure @nogc:
                 return variableReference;
             if (c == '"')
                 return stringLiteral;
-            if (_isAlpha(c))
+            if (isAlpha(c))
                 return identifier;
-            if (_isDigit(c))
+            if (isDigit(c))
                 return numberLiteral;
             if (c == '-') {
                 if (i + 1 < s.length) {
                     c = s[i + 1];
-                    if (_isAlpha(c))
+                    if (isAlpha(c))
                         return termReference;
-                    if (_isDigit(c))
+                    if (isDigit(c))
                         return numberLiteral;
                 }
             } else if (c == '{')
@@ -310,7 +314,7 @@ nothrow pure @nogc:
                 if (i + n >= s.length)
                     return null; // Invalid unicode escape sequence (EOF).
                 do
-                    if (!_isHexDigit(s[++i]))
+                    if (!isHexDigit(s[++i]))
                         return null; // Invalid unicode escape sequence.
                 while (--n);
             } else if (c == '\n') // Don't need to handle `\r\n` specially.
@@ -330,21 +334,21 @@ nothrow pure @nogc:
         if (s[i] == '-')
             i++;
         // Integer part.
-        assert(_isDigit(s[i]));
+        assert(isDigit(s[i]));
         while (true) {
             if (++i == s.length)
                 return true;
             const c = s[i];
-            if (!_isDigit(c)) {
+            if (!isDigit(c)) {
                 if (c != '.')
                     return true;
                 break;
             }
         }
         // Fractional part.
-        if (++i == s.length || !_isDigit(s[i]))
+        if (++i == s.length || !isDigit(s[i]))
             return false; // A number cannot end with a dot in Fluent.
-        while (++i < s.length && _isDigit(s[i])) { }
+        while (++i < s.length && isDigit(s[i])) { }
         return true;
     }
 }

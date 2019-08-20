@@ -3,9 +3,9 @@ module fluentd.syntax.parser;
 import std.array: Appender, appender;
 import std.range.primitives: empty;
 
-import fluentd.syntax.parser.common;
 import fluentd.syntax.parser.span;
 import fluentd.syntax.parser.stream;
+import fluentd.utils.lexing: isCallee;
 import ast = fluentd.syntax.ast;
 import err = fluentd.syntax.parser.errors: ErrorKind, ParserError;
 
@@ -68,13 +68,6 @@ nothrow {
     case mergingTexts:
         return _stripTrailingSpaces(mergedText).idup;
     }
-}
-
-bool _isValidCallee(ast.Identifier id) nothrow @nogc {
-    import std.algorithm.searching;
-    import std.utf;
-
-    return id.name.byCodeUnit().all!(c => _isCallee(c));
 }
 
 string _sanitize(string s) nothrow @trusted {
@@ -278,7 +271,7 @@ pure:
             (ast.NoCallArguments _) =>
                 ast.InlineExpression(ast.MessageReference(id)),
             (ref ast.CallArguments ca) {
-                if (!_isValidCallee(id))
+                if (!isCallee(id.name))
                     throw_(err.ForbiddenCallee());
                 return ast.InlineExpression(ast.FunctionReference(id, ca));
             },

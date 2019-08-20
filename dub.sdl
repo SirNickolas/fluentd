@@ -7,8 +7,10 @@ license     "MIT"
 
 subPackage "bundle"
 subPackage "syntax"
+subPackage "utils"
 
 dependency ":bundle" version="*"
 dependency ":syntax" version="*"
+dependency ":utils" version="*"
 
 targetType "none"

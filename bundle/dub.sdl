@@ -10,6 +10,7 @@ toolchainRequirements frontend=">=2.078"
 subPackage "test"
 
 dependency "fluentd:syntax" path=".."
+dependency "fluentd:utils" path=".."
 dependency "sumtype" version="~>0.8.12"
 
 targetType "library"

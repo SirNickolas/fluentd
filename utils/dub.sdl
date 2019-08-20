@@ -1,15 +1,10 @@
-name        "syntax"
-description "Fluent parser and serializer."
+name        "utils"
+description "Various functions used by several subpackages."
 homepage    "https://github.com/SirNickolas/fluentd"
 authors     "Nickolay Bukreyev"
 copyright   "Copyright © 2019, Nickolay Bukreyev"
 license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
-
-subPackage "test"
-
-dependency "fluentd:utils" path=".."
-dependency "sumtype" version="~>0.8.12"
 
 targetType "library"
