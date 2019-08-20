@@ -7,9 +7,9 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-subPackage "./test/"
+subPackage "test"
 
-dependency "syntax" path="../syntax"
+dependency "fluentd:syntax" path=".."
 dependency "sumtype" version="~>0.8.12"
 
 targetType "library"

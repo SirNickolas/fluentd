@@ -7,4 +7,4 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-dependency "bundle" path=".."
+dependency "fluentd:bundle" path="../.."

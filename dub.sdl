@@ -5,8 +5,8 @@ authors     "Nickolay Bukreyev"
 copyright   "Copyright © 2019, Nickolay Bukreyev"
 license     "MIT"
 
-subPackage "./bundle/"
-subPackage "./syntax/"
+subPackage "bundle"
+subPackage "syntax"
 
 dependency ":bundle" version="*"
 dependency ":syntax" version="*"
