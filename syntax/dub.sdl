@@ -7,9 +7,7 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-subPackage "test"
-
-dependency "fluentd:utils" path=".."
+dependency "fluentd:utils" path="../utils"
 dependency "sumtype" version="~>0.8.12"
 
 targetType "library"

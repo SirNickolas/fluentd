@@ -1,4 +1,4 @@
-name        "test"
+name        "syntax-test"
 description "Tests for fluentd:syntax."
 homepage    "https://github.com/SirNickolas/fluentd"
 authors     "Nickolay Bukreyev"
@@ -7,4 +7,4 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-dependency "fluentd:syntax" path="../.."
+dependency "fluentd:syntax" path=".."
