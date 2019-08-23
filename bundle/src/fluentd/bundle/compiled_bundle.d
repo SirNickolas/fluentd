@@ -3,7 +3,7 @@ module fluentd.bundle.compiled_bundle;
 import std.typecons: Rebindable;
 
 import fluentd.bundle.errors: isErrorHandler;
-import fluentd.bundle.function_: Function, Purity;
+import fluentd.bundle.function_: Function, NamedArgument, Purity;
 import fluentd.bundle.locale;
 
 import sumtype;
@@ -32,6 +32,8 @@ struct CompiledBundle {
         // The LSB is purity, the rest are index into `_functions`.
         Rebindable!(immutable uint[string]) _functionsInfo;
         Rebindable!(immutable CompiledMessage[string]) _messages;
+        immutable(string)[ ] _variables;
+        immutable(NamedArgument)[ ] _namedArguments;
         // TODO: More.
     }
 
@@ -39,10 +41,15 @@ struct CompiledBundle {
         // assert(_locale !is null);
     }
 
-    @property nothrow pure @nogc {
+    @property nothrow pure @safe @nogc {
         immutable(ubyte)[ ] bytecode() const { return _bytecode; }
         inout(Locale)* locale() inout { return _locale; }
         immutable(CompiledMessage[string]) messages() const { return _messages; }
+        package {
+            const(Function)[ ] functions() const { return _functions; }
+            immutable(string)[ ] variables() const { return _variables; }
+            immutable(NamedArgument)[ ] namedArguments() const { return _namedArguments; }
+        }
     }
 
     void redefineFunction(EH)(string name, Purity purity, Function f, scope EH onError)

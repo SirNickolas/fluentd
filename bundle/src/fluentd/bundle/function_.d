@@ -57,7 +57,15 @@ struct FunctionTable {
     }
 }
 
-enum defaultNumberFunction = delegate(
+enum defaultUnknownFunction = delegate Value(
+    Locale* locale,
+    scope const(Value)[ ] positional,
+    scope const(NamedArgument)[ ] named,
+) pure @safe {
+    throw new Exception("Unknown function");
+};
+
+enum defaultNumberFunction = delegate Value(
     Locale* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
@@ -75,7 +83,7 @@ enum defaultNumberFunction = delegate(
     return Value(positional[0].match!(to!double).to!string());
 };
 
-enum defaultDatetimeFunction = delegate(
+enum defaultDatetimeFunction = delegate Value(
     Locale* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
