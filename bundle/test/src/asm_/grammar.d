@@ -7,7 +7,7 @@ Assembly:
 
 Program     <- ProgramLine* eoi
 
-# We forbide tabs after non-tabs, so the only allowed spacing is ' '.
+# We forbide tabs in the source.
 Spacing     <: ' '*
 
 eol         <: '\r\n' / [\n\r] / eoi # Newline at EOF is optional.
@@ -17,7 +17,7 @@ identifier  <~ [A-Za-z] [-A-Za-z0-9_]*
 Number      <~ '-'? [0-9]+ ('.' [0-9]+)? ([Ee] [-+]? [0-9]+)?
 
 Char        <~
-    / '\\' ["\\nrt]
+    / '\\' . # Allowed escape sequences are \", \\, \n, \r, and \t.
     / ![\t\n\r"\\] .
 
 String      <~ :'\"' Char* :'\"'
@@ -43,7 +43,6 @@ Argument    <-
 CodeLine    < Instruction (Argument (:',' Argument)*)?
 
 ProgramLine <-
-    :'\t'* # Tabs are only allowed at the very start of a line.
     (
         / ExternLine
         / LabelLine
@@ -51,11 +50,7 @@ ProgramLine <-
         / Spacing
     )
     # A comment.
-    :(
-        ';'
-        [\t ;]* # For convinience, comments may also include tabs at their beginning.
-        (![\t\n\r] .)*
-    )?
+    :(';' (![\t\n\r] .)*)?
     eol
 
 PEG"));
