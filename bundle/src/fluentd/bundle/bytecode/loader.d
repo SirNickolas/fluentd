@@ -23,11 +23,16 @@ void _validateDataSection(immutable(ubyte)[ ] data) pure @safe {
 
 Tuple!(immutable(NamedArgument)[ ], size_t) _readNamedArgs(immutable(ubyte)[ ] init, size_t i)
 pure @safe {
+    import std.algorithm.comparison: max;
     import std.array: uninitializedArray;
     import std.conv: emplace;
 
     const argsLength = readU32(init, i);
     i += 4;
+    // Each argument occupies at least 3 bytes.
+    enforce(init.length - i >= max(argsLength, (argsLength << 1) + argsLength),
+        "Too many named arguments",
+    );
     auto args = (() @trusted => uninitializedArray!(NamedArgument[ ])(argsLength))();
     foreach (argIndex; 0 .. argsLength) {
         const argName = readIdentifier(init, i);
@@ -84,8 +89,9 @@ do {
     import std.array: uninitializedArray;
 
     const funcsLength = readU32(init, i);
-    enforce(funcsLength < 1u << 31, "Too many functions");
     i += 4;
+    // Each function occupies at least 2 bytes.
+    enforce(funcsLength < 1u << 31 && init.length - i >= funcsLength << 1, "Too many functions");
     auto funcs = (() @trusted => uninitializedArray!(Function[ ])(funcsLength))();
     uint[string] info;
     foreach (funcIndex; 0 .. funcsLength) {
@@ -110,10 +116,13 @@ do {
 }
 
 Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] init, size_t i) pure @safe {
+    import std.algorithm.comparison: max;
     import std.array: uninitializedArray;
 
     const varsLength = readU32(init, i);
     i += 4;
+    // Each variable occupies at least 2 bytes.
+    enforce(init.length - i >= max(varsLength, varsLength << 1), "Too many variables");
     auto vars = (() @trusted => uninitializedArray!(string[ ])(varsLength))();
     foreach (ref var; vars) {
         const varName = readIdentifier(init, i);
