@@ -11,10 +11,12 @@ import sumtype;
 struct NoCompiledPattern { }
 
 struct CompiledPattern {
-private nothrow pure @safe @nogc:
-    uint _address;
+nothrow pure @safe @nogc:
+    private uint _address;
 
-    this(uint address) { _address = address; }
+    package this(uint address) { _address = address; }
+
+    package @property uint address() const { return _address; }
 }
 
 alias OptionalCompiledPattern = SumType!(NoCompiledPattern, CompiledPattern);

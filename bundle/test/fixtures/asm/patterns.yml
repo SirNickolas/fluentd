@@ -1,0 +1,28 @@
+suites:
+- name: Call, ret, and jump
+  asm: |
+    @foo:
+      ret "Foo"
+
+    @regular-call:
+      call @foo
+      ret
+
+    @tail-call:
+      jmp @foo
+
+  tests:
+  - name: returns the value
+    asserts:
+    - id: foo
+      value: Foo
+
+  - name: calls a simple message
+    asserts:
+    - id: regular-call
+      value: Foo
+
+  - name: jumps to a simple message
+    asserts:
+    - id: tail-call
+      value: Foo

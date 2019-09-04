@@ -9,6 +9,6 @@ toolchainRequirements frontend=">=2.078"
 
 dependency "fluentd:syntax" path="../syntax"
 // dependency "fluentd:utils" path="../utils"
-dependency "sumtype" version="~>0.8.12"
+dependency "sumtype" version="==0.8.12" // The latest release that does not require 2.086+.
 
 targetType "library"

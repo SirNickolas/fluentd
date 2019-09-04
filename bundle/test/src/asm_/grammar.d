@@ -7,7 +7,7 @@ Assembly:
 
 Program     <- ProgramLine* eoi
 
-# We forbide tabs in the source.
+# We forbid tabs in the source.
 Spacing     <: ' '*
 
 eol         <: '\r\n' / [\n\r] / eoi # Newline at EOF is optional.

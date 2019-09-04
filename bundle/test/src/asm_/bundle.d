@@ -26,6 +26,7 @@ struct AsmMessage {
 
     invariant {
         assert(!name.empty);
+        assert(value != AsmLineNumber.init || !attributes.empty);
     }
 }
 

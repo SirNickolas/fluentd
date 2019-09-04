@@ -21,6 +21,53 @@ void _validateDataSection(immutable(ubyte)[ ] data) pure @safe {
     validateUTF(cast(string)data);
 }
 
+Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
+    immutable(ubyte)[ ] init, size_t i, size_t codeSectionSize,
+) pure @safe {
+    CompiledMessage[string] result;
+    CompiledMessage* cur;
+    bool validMsg = true;
+    while (true) {
+        const name = readIdentifier(init, i);
+        if (name.empty)
+            break;
+        i += name.length;
+
+        switch (readU8(init, i++)) {
+        case 0x00: // Message.
+            enforce(validMsg, "Message with no value and no attributes");
+            const addr = readU32(init, i);
+            enforce(addr < codeSectionSize, "Invalid message address");
+            i += 4;
+            enforce(name !in result, "Duplicate message");
+            cur = &(result[name] = CompiledMessage(OptionalCompiledPattern(CompiledPattern(addr))));
+            break;
+
+        case 0x01: // Attribute.
+            validMsg = true;
+            const addr = readU32(init, i);
+            enforce(addr < codeSectionSize, "Invalid attribute address");
+            i += 4;
+            enforce(cur !is null, "Orphan attribute");
+            enforce(name !in cur.attributes, "Duplicate attribute");
+            cur.attributes[name] = CompiledPattern(addr);
+            break;
+
+        case 0x02: // Message without value.
+            enforce(validMsg, "Message with no value and no attributes");
+            validMsg = false;
+            enforce(name !in result, "Duplicate message");
+            cur = &(result[name] = CompiledMessage(OptionalCompiledPattern(NoCompiledPattern())));
+            break;
+
+        default:
+            throw new Exception("Invalid message terminator");
+        }
+    }
+    enforce(readU8(init, i++) == 0x00, "Invalid message section terminator");
+    return tuple(rebindable((() @trusted => cast(immutable)result.rehash())()), i);
+}
+
 Tuple!(immutable(NamedArgument)[ ], size_t) _readNamedArgs(immutable(ubyte)[ ] init, size_t i)
 pure @safe {
     import std.algorithm.comparison: max;
@@ -98,6 +145,7 @@ do {
         const funcName = readFunction(init, i);
         enforce(!funcName.empty, "Empty function name");
         i += funcName.length;
+
         const isPure = readU8(init, i++);
         enforce(isPure <= 0x01, "Unknown function type");
         enforce(funcName !in info, "Duplicate function name");
@@ -128,6 +176,7 @@ Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] init, size_t 
         const varName = readIdentifier(init, i);
         enforce(!varName.empty, "Empty variable name");
         i += varName.length;
+
         enforce(readU8(init, i++) == 0x00, "Invalid variable name terminator");
         var = varName;
     }
@@ -147,14 +196,13 @@ CompiledBundle* _loadBytecode(
     Locale* locale,
     const FunctionTable fTable,
     Appender!(err.BundleError[ ]) errors,
-) pure @safe
-out (result) {
-    assert(result !is null);
-}
-do {
+) pure @safe {
+    if (readU32(bytecode, 0) != bytecodeVersion) {
+        // It's an expected error, so we don't throw an exception for performance reasons.
+        return null;
+    }
     static if (size_t.max != uint.max)
         enforce(bytecode.length <= uint.max, "Bytecode size must be less than 4 GB");
-    enforce(readU32(bytecode, 0) == bytecodeVersion, "Wrong bytecode version");
     const dataSectionAddr = readU32(bytecode, 4);
     const initSectionAddr = readU32(bytecode, 8);
     enforce(dataSectionAddr >= 12 && initSectionAddr >= dataSectionAddr, "Wrong section address");
@@ -175,9 +223,19 @@ in {
 do {
     auto app = appender!(err.BundleError[ ]);
     CompiledBundle* result;
-    try
+    try {
         result = _loadBytecode(bytecode, locale, fTable, app);
-    catch (Exception e) {
+        if (result is null) {
+            debug (FluentD_BytecodeLoaderErrors) {
+                import std.stdio;
+
+                try
+                    write("fluentd bytecode error: Wrong bytecode version\n");
+                catch (Exception) { }
+            }
+            return null;
+        }
+    } catch (Exception e) {
         debug (FluentD_BytecodeLoaderErrors) {
             import std.stdio;
 

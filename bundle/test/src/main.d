@@ -1,9 +1,9 @@
 void main() {
-    import std.stdio;
-    import asm_.grammar;
     import asm_.parser;
+    import asm_.translator;
+    import stdf = std.file;
 
-    enum source = "   \n.extern FUNC-A [pure]; a\r\n.extern FUNC-B[ impure ] \r.extern FUNC-C[pure]\n\n.extern FUNC-D [impure]\n hello :\n@msg.attr:\n\nret -0 , @msg.attr , \"string\"";
-    write(Assembly(source));
-    auto bundle = parse(source);
+    const bundle = parse(stdf.readText("source.asm"));
+    immutable bytecode = translate(bundle);
+    stdf.write("bytecode.bin", bytecode);
 }

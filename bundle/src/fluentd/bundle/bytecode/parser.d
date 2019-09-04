@@ -73,5 +73,5 @@ do {
     return cast(string)data[start .. i];
 }
 
-alias readIdentifier = _readIdentifier!(isAlpha, isIdent);
-alias readFunction   = _readIdentifier!(isUpper, isCallee);
+alias readIdentifier = (data, i) => _readIdentifier!(isAlpha, isIdent)(data, i);
+alias readFunction   = (data, i) => _readIdentifier!(isUpper, isCallee)(data, i);

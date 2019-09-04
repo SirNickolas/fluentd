@@ -7,5 +7,6 @@ license     "MIT"
 
 toolchainRequirements frontend=">=2.078"
 
-dependency "fluentd:bundle" path=".."
+dependency "fluentd:bundle" path="../.."
+dependency "dyaml" version="~>0.8.0"
 dependency "pegged" version="~>0.4.4"
