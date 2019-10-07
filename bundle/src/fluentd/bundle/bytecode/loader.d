@@ -22,21 +22,21 @@ void _validateDataSection(immutable(ubyte)[ ] data) pure @safe {
 }
 
 Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
-    immutable(ubyte)[ ] init, size_t i, size_t codeSectionSize,
+    immutable(ubyte)[ ] bytecode, size_t i, size_t codeSectionSize,
 ) pure @safe {
     CompiledMessage[string] result;
     CompiledMessage* cur;
     bool validMsg = true;
     while (true) {
-        const name = readIdentifier(init, i);
+        const name = readIdentifier(bytecode, i);
         if (name.empty)
             break;
         i += name.length;
 
-        switch (readU8(init, i++)) {
+        switch (readU8(bytecode, i++)) {
         case 0x00: // Message.
             enforce(validMsg, "Message with no value and no attributes");
-            const addr = readU32(init, i);
+            const addr = readU32(bytecode, i);
             enforce(addr < codeSectionSize, "Invalid message address");
             i += 4;
             enforce(name !in result, "Duplicate message");
@@ -45,7 +45,7 @@ Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
 
         case 0x01: // Attribute.
             validMsg = true;
-            const addr = readU32(init, i);
+            const addr = readU32(bytecode, i);
             enforce(addr < codeSectionSize, "Invalid attribute address");
             i += 4;
             enforce(cur !is null, "Orphan attribute");
@@ -64,55 +64,56 @@ Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
             throw new Exception("Invalid message terminator");
         }
     }
-    enforce(readU8(init, i++) == 0x00, "Invalid message section terminator");
+    enforce(readU8(bytecode, i++) == 0x00, "Invalid message section terminator");
+    enforce(validMsg, "Message with no value and no attributes");
     return tuple(rebindable((() @trusted => cast(immutable)result.rehash())()), i);
 }
 
-Tuple!(immutable(NamedArgument)[ ], size_t) _readNamedArgs(immutable(ubyte)[ ] init, size_t i)
+Tuple!(immutable(NamedArgument)[ ], size_t) _readNamedArgs(immutable(ubyte)[ ] bytecode, size_t i)
 pure @safe {
     import std.algorithm.comparison: max;
     import std.array: uninitializedArray;
     import std.conv: emplace;
 
-    const argsLength = readU32(init, i);
+    const argsLength = readU32(bytecode, i);
     i += 4;
     // Each argument occupies at least 3 bytes.
-    enforce(init.length - i >= max(argsLength, (argsLength << 1) + argsLength),
+    enforce(bytecode.length - i >= max(argsLength, (argsLength << 1) + argsLength),
         "Too many named arguments",
     );
     auto args = (() @trusted => uninitializedArray!(NamedArgument[ ])(argsLength))();
     foreach (argIndex; 0 .. argsLength) {
-        const argName = readIdentifier(init, i);
+        const argName = readIdentifier(bytecode, i);
         enforce(!argName.empty, "Empty argument's name");
         i += argName.length;
 
         size_t len = void;
-        switch (readU8(init, i++)) {
+        switch (readU8(bytecode, i++)) {
         case 0x00: // double
-            emplace(&args[argIndex], argName, Value(readF64(init, i)));
+            emplace(&args[argIndex], argName, Value(readF64(bytecode, i)));
             i += 8;
             continue;
 
         case 0x01: // string (<= 255)
-            len = readU8(init, i);
+            len = readU8(bytecode, i);
             i++;
             break;
 
         case 0x02: // string (<= 65535)
-            len = readU16(init, i);
+            len = readU16(bytecode, i);
             i += 2;
             break;
 
         case 0x03: // string
-            len = readU32(init, i);
+            len = readU32(bytecode, i);
             i += 4;
             break;
 
         default:
             throw new Exception("Unknown type of a named argument");
         }
-        enforce(init.length - i >= len, "Named argument's value abruptly ended");
-        string argValue = cast(string)init[i .. i + len];
+        enforce(bytecode.length - i >= len, "Named argument's value abruptly ended");
+        string argValue = cast(string)bytecode[i .. i + len];
         validateUTF(argValue);
         i += len;
         emplace(&args[argIndex], argName, Value(argValue));
@@ -121,7 +122,7 @@ pure @safe {
 }
 
 Tuple!(Function[ ], Rebindable!(immutable uint[string]), size_t) _readFuncs(
-    immutable(ubyte)[ ] init,
+    immutable(ubyte)[ ] bytecode,
     size_t i,
     const FunctionTable fTable,
     Appender!(err.BundleError[ ]) errors,
@@ -130,23 +131,24 @@ out (result) {
     import std.algorithm.searching;
 
     assert(result[0].length == result[1].length);
-    assert(result[0].all!q{a !is null}, "Haven't initialized some function");
+    assert(result[0].all!q{a !is null}, "Haven't initialized some of the functions");
 }
 do {
     import std.array: uninitializedArray;
 
-    const funcsLength = readU32(init, i);
+    const funcsLength = readU32(bytecode, i);
     i += 4;
     // Each function occupies at least 2 bytes.
-    enforce(funcsLength < 1u << 31 && init.length - i >= funcsLength << 1, "Too many functions");
+    enforce(funcsLength < 1u << 31 && bytecode.length - i >= funcsLength << 1,
+        "Too many functions");
     auto funcs = (() @trusted => uninitializedArray!(Function[ ])(funcsLength))();
     uint[string] info;
     foreach (funcIndex; 0 .. funcsLength) {
-        const funcName = readFunction(init, i);
+        const funcName = readFunction(bytecode, i);
         enforce(!funcName.empty, "Empty function name");
         i += funcName.length;
 
-        const isPure = readU8(init, i++);
+        const isPure = readU8(bytecode, i++);
         enforce(isPure <= 0x01, "Unknown function type");
         enforce(funcName !in info, "Duplicate function name");
         info[funcName] = funcIndex << 1 | isPure;
@@ -163,32 +165,24 @@ do {
     return tuple(funcs, rebindable((() @trusted => cast(immutable)info.rehash())()), i);
 }
 
-Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] init, size_t i) pure @safe {
+Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] bytecode, size_t i) pure @safe {
     import std.algorithm.comparison: max;
     import std.array: uninitializedArray;
 
-    const varsLength = readU32(init, i);
+    const varsLength = readU32(bytecode, i);
     i += 4;
     // Each variable occupies at least 2 bytes.
-    enforce(init.length - i >= max(varsLength, varsLength << 1), "Too many variables");
+    enforce(bytecode.length - i >= max(varsLength, varsLength << 1), "Too many variables");
     auto vars = (() @trusted => uninitializedArray!(string[ ])(varsLength))();
     foreach (ref var; vars) {
-        const varName = readIdentifier(init, i);
+        const varName = readIdentifier(bytecode, i);
         enforce(!varName.empty, "Empty variable name");
         i += varName.length;
 
-        enforce(readU8(init, i++) == 0x00, "Invalid variable name terminator");
+        enforce(readU8(bytecode, i++) == 0x00, "Invalid variable name terminator");
         var = varName;
     }
     return tuple((() @trusted => cast(immutable)vars)(), i);
-}
-
-void _processInitSection(
-    immutable(ubyte)[ ] init,
-    const FunctionTable fTable,
-    Appender!(err.BundleError[ ]) errors,
-) pure @safe {
-    assert(false, "Not implemented");
 }
 
 CompiledBundle* _loadBytecode(
@@ -203,11 +197,28 @@ CompiledBundle* _loadBytecode(
     }
     static if (size_t.max != uint.max)
         enforce(bytecode.length <= uint.max, "Bytecode size must be less than 4 GB");
-    const dataSectionAddr = readU32(bytecode, 4);
-    const initSectionAddr = readU32(bytecode, 8);
-    enforce(dataSectionAddr >= 12 && initSectionAddr >= dataSectionAddr, "Wrong section address");
-    _validateDataSection(bytecode[dataSectionAddr .. initSectionAddr]);
-    return new CompiledBundle;
+
+    const codeSectionSize = readU32(bytecode, 4);
+    enum codeSectionAddr = 8u;
+    enforce(bytecode.length - codeSectionAddr > codeSectionSize, "Invalid code section size");
+    const codeSectionEnd = codeSectionAddr + codeSectionSize;
+
+    const dataSectionSize = readU32(bytecode, codeSectionEnd);
+    const dataSectionAddr = codeSectionEnd + 4;
+    enforce(bytecode.length - dataSectionAddr > dataSectionSize, "Invalid data section size");
+    _validateDataSection(bytecode[dataSectionAddr .. dataSectionAddr + dataSectionSize]);
+
+    const messages = _readMessages(bytecode, dataSectionAddr + dataSectionSize, codeSectionSize);
+    const vars = _readVars(bytecode, messages[1]);
+    const namedArgs = _readNamedArgs(bytecode, vars[1]);
+    auto funcs = _readFuncs(bytecode, namedArgs[1], fTable, errors); // TODO: `const`.
+    enforce(funcs[2] == bytecode.length, "Extra data at EOF");
+
+    // TODO: Validate code section.
+
+    return new CompiledBundle(
+        bytecode, locale, funcs[0], funcs[1], messages[0], vars[0], namedArgs[0],
+    );
 }
 
 public CompiledBundle* loadBytecode(EH)(
@@ -247,6 +258,6 @@ do {
     }
 
     foreach (ref e; app.data)
-        onError(e);
+        onError(/+e+/);
     return result;
 }

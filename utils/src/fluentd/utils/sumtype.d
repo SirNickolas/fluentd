@@ -1,5 +1,6 @@
 module fluentd.utils.sumtype;
 
+// https://github.com/pbackus/sumtype/issues/31
 template case_(T, alias f) {
     static if (__traits(compiles, f()))
         auto case_()(ref const T _) { return f(); } // With no argument.

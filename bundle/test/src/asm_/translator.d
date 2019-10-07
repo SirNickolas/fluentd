@@ -212,6 +212,6 @@ public immutable(ubyte)[ ] translate(ref const AsmBundle bundle) {
         nativeToLittleEndian(cast(uint)t.data.buffer.data.length) ~
         t.data.buffer.data ~
         t.messages.data ~
-        unimplemented[ ] ~
+        unimplemented ~
         t.functions.data;
 }

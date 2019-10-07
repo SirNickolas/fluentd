@@ -57,7 +57,7 @@ struct FunctionTable {
     }
 }
 
-immutable defaultUnknownFunction = delegate Value(
+alias defaultUnknownFunction = delegate Value(
     Locale* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
@@ -65,7 +65,7 @@ immutable defaultUnknownFunction = delegate Value(
     throw new Exception("Unknown function");
 };
 
-immutable defaultNumberFunction = delegate Value(
+alias defaultNumberFunction = delegate Value(
     Locale* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
@@ -83,7 +83,7 @@ immutable defaultNumberFunction = delegate Value(
     return Value(positional[0].match!(to!double).to!string());
 };
 
-immutable defaultDatetimeFunction = delegate Value(
+alias defaultDatetimeFunction = delegate Value(
     Locale* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
