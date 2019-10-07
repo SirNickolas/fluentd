@@ -20,6 +20,6 @@ void main() {
         createDefaultFunctionTable(),
         { stderr.write("An error occurred.\n"); },
     );
-    if (compiled !is null)
+    if (compiled is null)
         stderr.write("Bytecode loading error.\n");
 }

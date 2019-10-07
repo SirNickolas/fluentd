@@ -81,7 +81,7 @@ pure @safe:
                 msg.value = curCodeLine;
             } else {
                 enforce(label.attribute !in msg.attributes,
-                    "Duplicate public attribute: @" ~ label.attribute,
+                    "Duplicate public attribute: @" ~ label.name ~ '.' ~ label.attribute,
                 );
                 msg.attributes[label.attribute] = curCodeLine;
             }

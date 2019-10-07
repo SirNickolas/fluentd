@@ -235,7 +235,7 @@ do {
                 import std.stdio;
 
                 try
-                    write("fluentd bytecode error: Wrong bytecode version\n");
+                    stderr.write("fluentd bytecode error: Wrong bytecode version\n");
                 catch (Exception) { }
             }
             return null;
@@ -245,7 +245,7 @@ do {
             import std.stdio;
 
             try
-                writeln("fluentd bytecode error: ", e.msg);
+                stderr.writeln("fluentd bytecode error: ", e.msg);
             catch (Exception) { }
         }
         return null;
