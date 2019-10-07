@@ -8,10 +8,12 @@ import fluentd.bundle.locale;
 
 import sumtype;
 
+@safe:
+
 struct NoCompiledPattern { }
 
 struct CompiledPattern {
-nothrow pure @safe @nogc:
+nothrow pure @nogc:
     private uint _address;
 
     package this(uint address) { _address = address; }
@@ -27,29 +29,45 @@ struct CompiledMessage {
 }
 
 struct CompiledBundle {
-nothrow pure @safe @nogc:
+nothrow pure @nogc:
     private {
         immutable(ubyte)[ ] _bytecode;
-        Locale* _locale;
-        Function[ ] _functions;
+        immutable(Locale)* _locale;
+        immutable(Function)[ ] _functions;
         Rebindable!(immutable CompiledMessage[string]) _messages;
         immutable(string)[ ] _variables;
         immutable(NamedArgument)[ ] _namedArguments;
-        // TODO: More.
     }
 
     invariant {
-        // assert(_locale !is null);
+        assert(_locale !is null);
     }
 
-    @property {
-        immutable(ubyte)[ ] bytecode() const { return _bytecode; }
-        inout(Locale)* locale() inout { return _locale; }
-        immutable(CompiledMessage[string]) messages() const { return _messages; }
+    package this(
+        immutable(ubyte)[ ] bytecode,
+        immutable(Locale)* locale,
+        immutable(Function)[ ] functions,
+        Rebindable!(immutable CompiledMessage[string]) messages,
+        immutable(string)[ ] variables,
+        immutable(NamedArgument)[ ] namedArguments,
+    ) inout {
+        _bytecode = bytecode;
+        _locale = locale;
+        _functions = functions;
+        _messages = messages;
+        _variables = variables;
+        _namedArguments = namedArguments;
+    }
+
+    @property const {
+        immutable(ubyte)[ ] bytecode() { return _bytecode; }
+        immutable(Locale)* locale() { return _locale; }
+        immutable(CompiledMessage[string]) messages() { return _messages; }
+
         package {
-            const(Function)[ ] functions() const { return _functions; }
-            immutable(string)[ ] variables() const { return _variables; }
-            immutable(NamedArgument)[ ] namedArguments() const { return _namedArguments; }
+            immutable(Function)[ ] functions() { return _functions; }
+            immutable(string)[ ] variables() { return _variables; }
+            immutable(NamedArgument)[ ] namedArguments() { return _namedArguments; }
         }
     }
 }

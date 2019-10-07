@@ -14,7 +14,7 @@ struct NamedArgument {
 
 // `Locale*` is always non-`null`; named arguments are sorted by their name.
 alias Function =
-    Value delegate(Locale*, scope const(Value)[ ], scope const(NamedArgument)[ ]) @safe;
+    Value delegate(immutable(Locale)*, scope const(Value)[ ], scope const(NamedArgument)[ ]) @safe;
 
 struct FunctionTable {
     struct Entry {
@@ -54,7 +54,7 @@ struct FunctionTable {
 }
 
 alias defaultUnknownFunction = delegate Value(
-    Locale* locale,
+    immutable(Locale)* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
 ) pure @safe {
@@ -62,7 +62,7 @@ alias defaultUnknownFunction = delegate Value(
 };
 
 alias defaultNumberFunction = delegate Value(
-    Locale* locale,
+    immutable(Locale)* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
 ) @safe {
@@ -80,7 +80,7 @@ alias defaultNumberFunction = delegate Value(
 };
 
 alias defaultDatetimeFunction = delegate Value(
-    Locale* locale,
+    immutable(Locale)* locale,
     scope const(Value)[ ] positional,
     scope const(NamedArgument)[ ] named,
 ) @safe {

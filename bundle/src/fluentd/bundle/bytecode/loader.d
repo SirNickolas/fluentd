@@ -141,7 +141,7 @@ pure @safe {
     return tuple((() @trusted => cast(immutable)args)(), i);
 }
 
-Tuple!(Function[ ], size_t) _readFuncs(
+Tuple!(immutable(Function)[ ], size_t) _readFuncs(
     immutable(ubyte)[ ] bytecode,
     size_t i,
     const FunctionTable fTable,
@@ -178,12 +178,12 @@ do {
             funcs[funcIndex] = defaultUnknownFunction; // Always throws.
         }
     }
-    return tuple(funcs, i);
+    return tuple((() @trusted => cast(immutable)funcs)(), i);
 }
 
-CompiledBundle* _loadBytecode(
+immutable(CompiledBundle)* _loadBytecode(
     immutable(ubyte)[ ] bytecode,
-    Locale* locale,
+    immutable(Locale)* locale,
     const FunctionTable fTable,
     Appender!(err.BundleError[ ]) errors,
 ) pure @safe {
@@ -204,20 +204,23 @@ CompiledBundle* _loadBytecode(
     enforce(bytecode.length - dataSectionAddr > dataSectionSize, "Invalid data section size");
     _validateDataSection(bytecode[dataSectionAddr .. dataSectionAddr + dataSectionSize]);
 
-    const messages = _readMessages(bytecode, dataSectionAddr + dataSectionSize, codeSectionSize);
-    const vars = _readVars(bytecode, messages[1]);
-    const namedArgs = _readNamedArgs(bytecode, vars[1]);
-    auto funcs = _readFuncs(bytecode, namedArgs[1], fTable, errors); // TODO: `const`.
+    immutable messages =
+        _readMessages(bytecode, dataSectionAddr + dataSectionSize, codeSectionSize);
+    immutable vars = _readVars(bytecode, messages[1]);
+    immutable namedArgs = _readNamedArgs(bytecode, vars[1]);
+    immutable funcs = _readFuncs(bytecode, namedArgs[1], fTable, errors);
     enforce(funcs[1] == bytecode.length, "Extra data at EOF");
 
     // TODO: Validate code section.
 
-    return new CompiledBundle(bytecode, locale, funcs[0], messages[0], vars[0], namedArgs[0]);
+    return new immutable CompiledBundle(
+        bytecode, locale, funcs[0], messages[0], vars[0], namedArgs[0],
+    );
 }
 
-public CompiledBundle* loadBytecode(EH)(
+public immutable(CompiledBundle)* loadBytecode(EH)(
     immutable(ubyte)[ ] bytecode,
-    Locale* locale,
+    immutable(Locale)* locale,
     const FunctionTable fTable,
     scope EH onError,
 ) if (isErrorHandler!EH)
@@ -227,7 +230,7 @@ in {
 }
 do {
     auto app = appender!(err.BundleError[ ]);
-    CompiledBundle* result;
+    immutable(CompiledBundle)* result;
     try {
         result = _loadBytecode(bytecode, locale, fTable, app);
         if (result is null) {

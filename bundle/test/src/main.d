@@ -14,9 +14,9 @@ void main() {
     const bundle = parse(stdf.readText("source.asm"));
     immutable bytecode = translate(bundle);
     stdf.write("bytecode.bin", bytecode);
-    auto compiled = loadBytecode(
+    immutable compiled = loadBytecode(
         bytecode,
-        new Locale(["en"]),
+        new immutable Locale(["en"]),
         createDefaultFunctionTable(),
         { stderr.write("An error occurred.\n"); },
     );
