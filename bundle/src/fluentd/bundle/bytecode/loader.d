@@ -69,6 +69,26 @@ Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
     return tuple(rebindable((() @trusted => cast(immutable)result.rehash())()), i);
 }
 
+Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] bytecode, size_t i) pure @safe {
+    import std.algorithm.comparison: max;
+    import std.array: uninitializedArray;
+
+    const varsLength = readU32(bytecode, i);
+    i += 4;
+    // Each variable occupies at least 2 bytes.
+    enforce(bytecode.length - i >= max(varsLength, varsLength << 1), "Too many variables");
+    auto vars = (() @trusted => uninitializedArray!(string[ ])(varsLength))();
+    foreach (ref var; vars) {
+        const varName = readIdentifier(bytecode, i);
+        enforce(!varName.empty, "Empty variable name");
+        i += varName.length;
+
+        enforce(readU8(bytecode, i++) == 0x00, "Invalid variable name terminator");
+        var = varName;
+    }
+    return tuple((() @trusted => cast(immutable)vars)(), i);
+}
+
 Tuple!(immutable(NamedArgument)[ ], size_t) _readNamedArgs(immutable(ubyte)[ ] bytecode, size_t i)
 pure @safe {
     import std.algorithm.comparison: max;
@@ -163,26 +183,6 @@ do {
         funcs[funcIndex] = defaultUnknownFunction; // Always throws.
     }
     return tuple(funcs, rebindable((() @trusted => cast(immutable)info.rehash())()), i);
-}
-
-Tuple!(immutable(string)[ ], size_t) _readVars(immutable(ubyte)[ ] bytecode, size_t i) pure @safe {
-    import std.algorithm.comparison: max;
-    import std.array: uninitializedArray;
-
-    const varsLength = readU32(bytecode, i);
-    i += 4;
-    // Each variable occupies at least 2 bytes.
-    enforce(bytecode.length - i >= max(varsLength, varsLength << 1), "Too many variables");
-    auto vars = (() @trusted => uninitializedArray!(string[ ])(varsLength))();
-    foreach (ref var; vars) {
-        const varName = readIdentifier(bytecode, i);
-        enforce(!varName.empty, "Empty variable name");
-        i += varName.length;
-
-        enforce(readU8(bytecode, i++) == 0x00, "Invalid variable name terminator");
-        var = varName;
-    }
-    return tuple((() @trusted => cast(immutable)vars)(), i);
 }
 
 CompiledBundle* _loadBytecode(
