@@ -26,7 +26,12 @@ struct FunctionTable {
 
     this(Entry[string] aa) nothrow pure @safe @nogc
     in {
-        // TODO: Check if AA's keys are valid function names.
+        import fluentd.utils.lexing: isCallee;
+
+        foreach (ref kv; aa.byKeyValue()) {
+            assert(isCallee(kv.key), "Invalid function name");
+            assert(kv.value.f !is null, "Function must not be `null`");
+        }
     }
     do {
         _aa = aa;
@@ -44,7 +49,9 @@ struct FunctionTable {
         ConflictResolutionStrategy strategy = ConflictResolutionStrategy.redefine,
     ) if (isErrorHandler!EH)
     in {
-        // TODO: Check if `name` is a valid function name.
+        import fluentd.utils.lexing: isCallee;
+
+        assert(isCallee(name), "Invalid function name");
         assert(f !is null, "Function must not be `null`");
         assert(onError !is null, "Error handler must not be `null`");
     }
