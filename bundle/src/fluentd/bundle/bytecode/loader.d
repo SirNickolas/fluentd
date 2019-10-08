@@ -202,7 +202,8 @@ immutable(CompiledBundle)* _loadBytecode(
     const dataSectionSize = readU32(bytecode, codeSectionEnd);
     const dataSectionAddr = codeSectionEnd + 4;
     enforce(bytecode.length - dataSectionAddr > dataSectionSize, "Invalid data section size");
-    _validateDataSection(bytecode[dataSectionAddr .. dataSectionAddr + dataSectionSize]);
+    const dataSection = bytecode[dataSectionAddr .. dataSectionAddr + dataSectionSize];
+    _validateDataSection(dataSection);
 
     immutable messages =
         _readMessages(bytecode, dataSectionAddr + dataSectionSize, codeSectionSize);
@@ -214,7 +215,8 @@ immutable(CompiledBundle)* _loadBytecode(
     // TODO: Validate code section.
 
     return new immutable CompiledBundle(
-        bytecode, locale, funcs[0], messages[0], vars[0], namedArgs[0],
+        bytecode, bytecode[codeSectionAddr .. codeSectionEnd], dataSection,
+        locale, funcs[0], messages[0], vars[0], namedArgs[0],
     );
 }
 

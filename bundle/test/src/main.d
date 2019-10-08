@@ -37,12 +37,12 @@ void main() {
         writeln(msg.name);
         msg.message.value.match!(
             (ref CompiledPattern pattern) {
-                write("= «", /+pattern.format(&onError),+/ "»\n");
+                write("= «", pattern.format(&onError), "»\n");
             },
             (NoCompiledPattern _) { },
         );
         foreach (ref attr; msg.message.getAttributes()) {
-            write('.', attr.name, " = «", /+attr.pattern.format(&onError),+/ "»\n");
+            write('.', attr.name, " = «", attr.pattern.format(&onError), "»\n");
         }
     }
 }

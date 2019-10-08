@@ -93,7 +93,7 @@ alias OptionalCompiledMessage = SumType!(NoCompiledMessage, CompiledMessage);
 struct CompiledBundle {
 nothrow pure:
     private {
-        immutable(ubyte)[ ] _bytecode;
+        immutable(ubyte)[ ] _bytecode, _codeSection, _dataSection;
         immutable(Locale)* _locale;
         immutable(Function)[ ] _functions;
         Rebindable!(immutable _CompiledMessage[string]) _messages;
@@ -107,6 +107,8 @@ nothrow pure:
 
     package this(
         immutable(ubyte)[ ] bytecode,
+        immutable(ubyte)[ ] codeSection,
+        immutable(ubyte)[ ] dataSection,
         immutable(Locale)* locale,
         immutable(Function)[ ] functions,
         Rebindable!(immutable _CompiledMessage[string]) messages,
@@ -114,6 +116,8 @@ nothrow pure:
         immutable(NamedArgument)[ ] namedArguments,
     ) inout @nogc {
         _bytecode = bytecode;
+        _codeSection = codeSection;
+        _dataSection = dataSection;
         _locale = locale;
         _functions = functions;
         _messages = messages;
@@ -126,6 +130,8 @@ nothrow pure:
         immutable(Locale)* locale() { return _locale; }
 
         package {
+            immutable(ubyte)[ ] codeSection() { return _codeSection; }
+            immutable(ubyte)[ ] dataSection() { return _dataSection; }
             immutable(Function)[ ] functions() { return _functions; }
             immutable(string)[ ] variables() { return _variables; }
             immutable(NamedArgument)[ ] namedArguments() { return _namedArguments; }
