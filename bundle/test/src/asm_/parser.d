@@ -8,14 +8,6 @@ import asm_.bundle;
 
 private:
 
-bool _parsePurity(string s) pure @safe {
-    switch (s) {
-        case "pure":   return true;
-        case "impure": return false;
-        default: throw new Exception("Invalid purity: " ~ s);
-    }
-}
-
 AsmLabel _parseLabel(ref const ParseTree label) nothrow pure @safe @nogc {
     if (label.children[0].name != "Assembly.Public") {
         assert(label.children.length == 1);
@@ -66,11 +58,11 @@ pure @safe:
     }
 
     void visitExternLine(ref const ParseTree line) {
-        assert(line.matches.length == 2);
+        assert(line.matches.length == 1);
         const name = line.matches[0];
         enforce(name !in bundle.functionIds, "Duplicate function: " ~ name);
         bundle.functionIds[name] = bundle.functions.length;
-        bundle.functions ~= ExternDefinition(name, _parsePurity(line.matches[1]));
+        bundle.functions ~= ExternDefinition(name);
     }
 
     void visitLabelLine(ref const ParseTree line) {

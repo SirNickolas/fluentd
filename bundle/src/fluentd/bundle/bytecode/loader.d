@@ -141,7 +141,7 @@ pure @safe {
     return tuple((() @trusted => cast(immutable)args)(), i);
 }
 
-Tuple!(Function[ ], Rebindable!(immutable uint[string]), size_t) _readFuncs(
+Tuple!(Function[ ], size_t) _readFuncs(
     immutable(ubyte)[ ] bytecode,
     size_t i,
     const FunctionTable fTable,
@@ -150,39 +150,35 @@ Tuple!(Function[ ], Rebindable!(immutable uint[string]), size_t) _readFuncs(
 out (result) {
     import std.algorithm.searching;
 
-    assert(result[0].length == result[1].length);
     assert(result[0].all!q{a !is null}, "Haven't initialized some of the functions");
 }
 do {
+    import std.algorithm.comparison: max;
     import std.array: uninitializedArray;
 
     const funcsLength = readU32(bytecode, i);
     i += 4;
     // Each function occupies at least 2 bytes.
-    enforce(funcsLength < 1u << 31 && bytecode.length - i >= funcsLength << 1,
-        "Too many functions");
+    enforce(bytecode.length - i >= max(funcsLength, funcsLength << 1), "Too many functions");
     auto funcs = (() @trusted => uninitializedArray!(Function[ ])(funcsLength))();
-    uint[string] info;
+    bool[string] seen;
     foreach (funcIndex; 0 .. funcsLength) {
         const funcName = readFunction(bytecode, i);
         enforce(!funcName.empty, "Empty function name");
         i += funcName.length;
 
-        const isPure = readU8(bytecode, i++);
-        enforce(isPure <= 0x01, "Unknown function type");
-        enforce(funcName !in info, "Duplicate function name");
-        info[funcName] = funcIndex << 1 | isPure;
+        enforce(readU8(bytecode, i++) == 0x00, "Invalid function name terminator");
+        enforce(funcName !in seen, "Duplicate function name");
+        seen[funcName] = true;
         if (const entry = funcName in fTable.functions)
-            if (!(isPure && entry.purity == Purity.impure)) {
-                funcs[funcIndex] = entry.f;
-                continue;
-            } else // Attempting to supply an impure function where a pure one is expected.
-                errors ~= null;
-        else // Unknown function.
+            funcs[funcIndex] = entry.f;
+        else {
+            // Unknown function.
             errors ~= null;
-        funcs[funcIndex] = defaultUnknownFunction; // Always throws.
+            funcs[funcIndex] = defaultUnknownFunction; // Always throws.
+        }
     }
-    return tuple(funcs, rebindable((() @trusted => cast(immutable)info.rehash())()), i);
+    return tuple(funcs, i);
 }
 
 CompiledBundle* _loadBytecode(
@@ -212,13 +208,11 @@ CompiledBundle* _loadBytecode(
     const vars = _readVars(bytecode, messages[1]);
     const namedArgs = _readNamedArgs(bytecode, vars[1]);
     auto funcs = _readFuncs(bytecode, namedArgs[1], fTable, errors); // TODO: `const`.
-    enforce(funcs[2] == bytecode.length, "Extra data at EOF");
+    enforce(funcs[1] == bytecode.length, "Extra data at EOF");
 
     // TODO: Validate code section.
 
-    return new CompiledBundle(
-        bytecode, locale, funcs[0], funcs[1], messages[0], vars[0], namedArgs[0],
-    );
+    return new CompiledBundle(bytecode, locale, funcs[0], messages[0], vars[0], namedArgs[0]);
 }
 
 public CompiledBundle* loadBytecode(EH)(

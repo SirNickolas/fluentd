@@ -53,7 +53,7 @@ pure @safe:
 
     Functions table entry:
         [...] Identifier.
-        [u8]  (0x00 | 0x01) Purity.
+        [u8]  (0x00) Zero terminator.
 
     Code section consists of (surprise) code for messages and non-inlined terms.
     Data section contains all strings used by the resource. It must be valid UTF-8.

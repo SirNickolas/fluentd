@@ -12,7 +12,6 @@ struct AsmLineNumber {
 
 struct ExternDefinition {
     string name;
-    bool pure_;
 
     invariant {
         assert(!name.empty);

@@ -1,5 +1,7 @@
 module fluentd.bundle.function_;
 
+import std.typecons: Flag, Yes;
+
 public import fluentd.bundle.conflicts;
 public import fluentd.bundle.locale;
 public import fluentd.bundle.value;
@@ -14,16 +16,10 @@ struct NamedArgument {
 alias Function =
     Value delegate(Locale*, scope const(Value)[ ], scope const(NamedArgument)[ ]) @safe;
 
-enum Purity: ubyte {
-    impure,
-    pure_,
-    compileTime,
-}
-
 struct FunctionTable {
     struct Entry {
         Function f;
-        Purity purity;
+        Flag!q{allowCTFE} allowCTFE;
     }
 
     private Entry[string] _aa;
@@ -42,7 +38,7 @@ struct FunctionTable {
 
     void add(EH)(
         string name,
-        Purity purity,
+        Flag!q{allowCTFE} allowCTFE,
         Function f,
         scope EH onError,
         ConflictResolutionStrategy strategy = ConflictResolutionStrategy.redefine,
@@ -53,7 +49,7 @@ struct FunctionTable {
         assert(onError !is null, "Error handler must not be `null`");
     }
     do {
-        _register!(() => Entry(f, purity))(_aa, name, _ConflictInfo!EH(onError, strategy));
+        _register!(() => Entry(f, allowCTFE))(_aa, name, _ConflictInfo!EH(onError, strategy));
     }
 }
 
@@ -101,9 +97,10 @@ alias defaultDatetimeFunction = delegate Value(
     return Value(positional[0].match!(to!string));
 };
 
-FunctionTable createDefaultFunctionTable(Purity purity = Purity.compileTime) nothrow pure @safe {
+FunctionTable createDefaultFunctionTable(Flag!q{allowCTFE} allowCTFE = Yes.allowCTFE)
+nothrow pure @safe {
     return FunctionTable([
-        "NUMBER":   FunctionTable.Entry(defaultNumberFunction, purity),
-        "DATETIME": FunctionTable.Entry(defaultDatetimeFunction, purity),
+        "NUMBER":   FunctionTable.Entry(defaultNumberFunction, allowCTFE),
+        "DATETIME": FunctionTable.Entry(defaultDatetimeFunction, allowCTFE),
     ]);
 }

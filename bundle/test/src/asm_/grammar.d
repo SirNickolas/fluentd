@@ -24,7 +24,7 @@ String      <~ :'\"' Char* :'\"'
 
 PragmaExtern <- '.extern' WordEnd
 
-ExternLine  < :PragmaExtern identifier :'[' identifier :']'
+ExternLine  < :PragmaExtern identifier
 
 Public      <- '@'
 Label       <-

@@ -129,14 +129,11 @@ pure:
     }
 
     void translateFunctions() {
-        import std.exception: enforce;
-
-        enforce(bundle.functions.length < 1u << 31, "Too many functions");
         with (functions) {
             write!uint(cast(uint)bundle.functions.length);
-            foreach (ref f; bundle.functions) {
+            foreach (f; bundle.functions) {
                 write!string(f.name);
-                write!ubyte(f.pure_);
+                write!ubyte(0x00);
             }
         }
     }
