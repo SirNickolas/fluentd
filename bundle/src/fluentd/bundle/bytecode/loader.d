@@ -21,11 +21,11 @@ void _validateDataSection(immutable(ubyte)[ ] data) pure @safe {
     validateUTF(cast(string)data);
 }
 
-Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
+Tuple!(Rebindable!(immutable _CompiledMessage[string]), size_t) _readMessages(
     immutable(ubyte)[ ] bytecode, size_t i, size_t codeSectionSize,
 ) pure @safe {
-    CompiledMessage[string] result;
-    CompiledMessage* cur;
+    _CompiledMessage[string] result;
+    _CompiledMessage* cur;
     bool validMsg = true;
     while (true) {
         const name = readIdentifier(bytecode, i);
@@ -40,7 +40,7 @@ Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
             enforce(addr < codeSectionSize, "Invalid message address");
             i += 4;
             enforce(name !in result, "Duplicate message");
-            cur = &(result[name] = CompiledMessage(OptionalCompiledPattern(CompiledPattern(addr))));
+            cur = &(result[name] = _CompiledMessage(addr));
             break;
 
         case 0x01: // Attribute.
@@ -50,14 +50,14 @@ Tuple!(Rebindable!(immutable CompiledMessage[string]), size_t) _readMessages(
             i += 4;
             enforce(cur !is null, "Orphan attribute");
             enforce(name !in cur.attributes, "Duplicate attribute");
-            cur.attributes[name] = CompiledPattern(addr);
+            cur.attributes[name] = addr;
             break;
 
         case 0x02: // Message without value.
             enforce(validMsg, "Message with no value and no attributes");
             validMsg = false;
             enforce(name !in result, "Duplicate message");
-            cur = &(result[name] = CompiledMessage(OptionalCompiledPattern(NoCompiledPattern())));
+            cur = &(result[name] = _CompiledMessage.init);
             break;
 
         default:
