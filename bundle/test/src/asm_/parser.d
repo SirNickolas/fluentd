@@ -1,7 +1,5 @@
 module asm_.parser;
 
-import std.exception: enforce;
-
 import pegged.peg: ParseTree;
 
 import asm_.bundle;
@@ -59,13 +57,11 @@ pure @safe:
 
     void visitExternLine(ref const ParseTree line) {
         assert(line.matches.length == 1);
-        const name = line.matches[0];
-        enforce(name !in bundle.functionIds, "Duplicate function: " ~ name);
-        bundle.functionIds[name] = bundle.functions.length;
-        bundle.functions ~= ExternDefinition(name);
+        bundle.functions ~= ExternDefinition(line.matches[0]);
     }
 
     void visitLabelLine(ref const ParseTree line) {
+        import std.exception: enforce;
         import std.range.primitives: empty;
 
         assert(line.children.length == 1);

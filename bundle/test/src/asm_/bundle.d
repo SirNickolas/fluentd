@@ -55,6 +55,6 @@ struct AsmBundle {
     ExternDefinition[ ] functions;
     AsmMessage[ ] messages;
     AsmCodeLine[ ] code;
-    size_t[string] functionIds, messageIds;
+    size_t[string] messageIds;
     AsmLineNumber[string] privateLabels;
 }
