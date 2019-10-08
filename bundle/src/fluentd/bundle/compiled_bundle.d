@@ -2,12 +2,12 @@ module fluentd.bundle.compiled_bundle;
 
 import std.typecons: Nullable, Rebindable;
 
-import fluentd.bundle.errors: isErrorHandler;
 import fluentd.bundle.function_: Function, NamedArgument;
 import fluentd.bundle.locale;
-import fluentd.bundle.value;
 
 import sumtype;
+
+@safe:
 
 package struct _CompiledMessage {
     private uint _value = uint.max;
@@ -17,6 +17,7 @@ package struct _CompiledMessage {
 struct NoCompiledPattern { }
 
 struct CompiledPattern {
+nothrow pure @nogc:
     private {
         immutable(CompiledBundle)* _bundle;
         uint _address;
@@ -28,26 +29,13 @@ struct CompiledPattern {
 
     @disable this();
 
-    private this(immutable(CompiledBundle)* bundle, uint address) nothrow pure @safe @nogc {
+    private this(immutable(CompiledBundle)* bundle, uint address) {
         _bundle = bundle;
         _address = address;
     }
 
-    @property immutable(CompiledBundle)* bundle() const nothrow pure @safe @nogc {
-        return _bundle;
-    }
-
-    string format(EH)(scope const Value[string] args, scope EH onError) const if (isErrorHandler!EH)
-    in {
-        assert(onError !is null, "Error handler must not be `null`");
-    }
-    do {
-        assert(false, "Not implemented");
-    }
-
-    string format(EH)(scope EH onError) const if (isErrorHandler!EH) {
-        return format(null, onError);
-    }
+    @property immutable(CompiledBundle)* bundle() const { return _bundle; }
+    package @property uint address() const { return _address; }
 }
 
 alias OptionalCompiledPattern = SumType!(NoCompiledPattern, CompiledPattern);
@@ -55,7 +43,7 @@ alias OptionalCompiledPattern = SumType!(NoCompiledPattern, CompiledPattern);
 struct NoCompiledMessage { }
 
 struct CompiledMessage {
-nothrow pure @safe:
+nothrow pure:
     private {
         immutable(CompiledBundle)* _bundle;
         Nullable!(uint, uint.max) _value;
@@ -103,7 +91,7 @@ nothrow pure @safe:
 alias OptionalCompiledMessage = SumType!(NoCompiledMessage, CompiledMessage);
 
 struct CompiledBundle {
-nothrow pure @safe:
+nothrow pure:
     private {
         immutable(ubyte)[ ] _bytecode;
         immutable(Locale)* _locale;

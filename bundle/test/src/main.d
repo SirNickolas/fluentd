@@ -5,6 +5,7 @@ void main() {
     import fluentd.bundle.compiled_bundle: CompiledPattern, NoCompiledPattern;
     import fluentd.bundle.function_: createDefaultFunctionTable;
     import fluentd.bundle.locale: Locale;
+    import fluentd.bundle.bytecode.interpreter: format;
     import fluentd.bundle.bytecode.loader: loadBytecode;
     import sumtype;
 
